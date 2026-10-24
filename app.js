@@ -1,2014 +1,4148 @@
 
-/* GEM ATLAS V2 — APPLICATION + INTELLIGENCE */
+/* =========================================
+   GEM ATLAS — APP.JS
+   VERSION 2.0
+   LIBRARY / ATLAS / STATISTICS /
+   COMPARISON / RELATIONSHIP INTELLIGENCE
+========================================= */
+
 "use strict";
 
-const $ = s => document.querySelector(s);
-const $$ = s => [...document.querySelectorAll(s)];
+/* =========================================
+   APPLICATION STATE
+========================================= */
+
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
 
 const APP = {
-  db:null,gems:[],persistenceAvailable:true,
-  view:"library",quickFilter:"all",
-  currentGemId:null,editingGem:null,activeTab:"identity",
-  deleteId:null,toastTimer:null,
-  compareIds:[],
-  weights:{...GEM_CONFIG.weights},
-  inspector:null,
-  network:{nodes:[],edges:[],scale:1,x:0,y:0},
-  drag:null
+  db: null,
+  gems: [],
+  persistenceAvailable: true,
+
+  view: "library",
+  quickFilter: "all",
+
+  currentGemId: null,
+  editingGem: null,
+  activeTab: "identity",
+  deleteId: null,
+  toastTimer: null,
+
+  compareIds: [],
+  weights: { ...GEM_CONFIG.weights },
+
+  inspector: null,
+  network: {
+    nodes: [],
+    edges: [],
+    scale: 1,
+    x: 0,
+    y: 0
+  },
+
+  pointer: null,
+  suppressGraphClick: false,
+
+  statisticsRows: [],
+  statisticsCSV: "",
+  statPopulation: []
 };
 
-const DB_NAME="GemAtlasDatabase";
-const DB_VERSION=1;
-const GEM_STORE="gems";
-const META_STORE="metadata";
+const DB_NAME = "GemAtlasDatabase";
+const DB_VERSION = 1;
+const GEM_STORE = "gems";
+const META_STORE = "metadata";
+
+const PALETTE = [
+  "#b3a5e9", "#81a9d9", "#d8b0c8",
+  "#8abfb4", "#d3bb83", "#9788c8",
+  "#c58ba1", "#82a1b0", "#d6a68b",
+  "#9bbd91", "#8f89ad", "#d2c6e1"
+];
 
 /* =========================================
-   BASIC UTILITIES
+   UTILITIES
 ========================================= */
 
-function esc(x){
-  return String(x??"")
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;")
-    .replace(/'/g,"&#39;");
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
-const clone=x=>JSON.parse(JSON.stringify(x));
-const clean=x=>String(x??"").trim().toLocaleLowerCase();
-const unique=x=>[...new Set(x)];
-const filled=x=>x!==null&&x!==undefined&&x!==""
-  &&(!Array.isArray(x)||x.length>0);
-const list=x=>Array.isArray(x)?x.filter(filled):
-  filled(x)?[x]:[];
-const textArray=x=>String(x??"").split(",")
-  .map(v=>v.trim()).filter(Boolean);
-const arrayText=x=>Array.isArray(x)?x.join(", "):String(x??"");
-const num=x=>x===null||x===undefined||x===""
-  ?null:Number.isFinite(Number(x))?Number(x):null;
-const nameSort=(a,b)=>a.name.localeCompare(b.name);
 
-function get(obj,path){
-  return path.split(".").reduce((v,k)=>v?.[k],obj);
+function valueAt(object, path) {
+  return String(path).split(".").reduce(
+    (value, key) => value?.[key], object
+  );
 }
-function put(obj,path,value){
-  const p=path.split(".");
-  let target=obj;
-  for(let i=0;i<p.length-1;i++){
-    target[p[i]]??={};
-    target=target[p[i]];
+
+function setAt(object, path, value) {
+  const parts = path.split(".");
+  let target = object;
+
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!target[parts[i]] ||
+        typeof target[parts[i]] !== "object") {
+      target[parts[i]] = {};
+    }
+    target = target[parts[i]];
   }
-  target[p[p.length-1]]=value;
+
+  target[parts[parts.length - 1]] = value;
 }
-function uid(){
-  return globalThis.crypto?.randomUUID?.()||
-    "gem-"+Date.now().toString(36)+"-"+
+
+function uid() {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+
+  return "gem-" + Date.now().toString(36) + "-" +
     Math.random().toString(36).slice(2);
 }
-function color(g){
-  const x=g?.appearance?.color||g?.colors?.[0]?.hex;
-  return /^#[\da-f]{6}$/i.test(x||"")?x:"#b8a3e8";
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
 }
-function rgba(hex,a=.3){
-  const x=color({appearance:{color:hex}}).slice(1);
-  const v=[0,2,4].map(i=>parseInt(x.slice(i,i+2),16));
-  return `rgba(${v.join(",")},${a})`;
+
+function norm(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase();
 }
-function style(g){
-  return `--gem-color:${color(g)};--gem-glow:${rgba(color(g),.33)}`;
+
+function isFilled(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string") return !!value.trim();
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
 }
-function range(a,b,suffix=""){
-  if(num(a)===null&&num(b)===null)return "";
-  if(num(a)===null)return `${b}${suffix}`;
-  if(num(b)===null||Number(a)===Number(b))return `${a}${suffix}`;
-  return `${a}–${b}${suffix}`;
+
+function asArray(value) {
+  if (Array.isArray(value)) return value.filter(isFilled);
+  return isFilled(value) ? [value] : [];
 }
-function findGem(id){return APP.gems.find(g=>g.id===id)}
-function toast(message){
-  const el=$("#toast");
-  el.textContent=message;el.classList.add("show");
+
+function uniqueValues(values) {
+  const seen = new Set();
+
+  return values.filter(value => {
+    const key = norm(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function textArray(value) {
+  return String(value ?? "")
+    .split(",")
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function arrayText(value) {
+  if (Array.isArray(value)) return value.join(", ");
+  return String(value ?? "");
+}
+
+function numeric(value) {
+  if (value === "" || value === null ||
+      value === undefined) return null;
+
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatNumber(value, digits = 2) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return Number(value.toFixed(digits)).toLocaleString("en-US");
+}
+
+function formatRange(min, max, unit = "") {
+  const a = numeric(min);
+  const b = numeric(max);
+
+  if (a === null && b === null) return "";
+
+  const suffix = unit ? " " + unit : "";
+
+  if (a === null) return formatNumber(b, 3) + suffix;
+  if (b === null) return formatNumber(a, 3) + suffix;
+
+  if (a === b) return formatNumber(a, 3) + suffix;
+
+  return formatNumber(a, 3) + "–" +
+    formatNumber(b, 3) + suffix;
+}
+
+function validColor(hex) {
+  return /^#[0-9a-f]{6}$/i.test(hex || "")
+    ? hex : "#b8a3e8";
+}
+
+function rgba(hex, alpha) {
+  const h = validColor(hex).slice(1);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+function gemColor(gem) {
+  return validColor(gem?.appearance?.color);
+}
+
+function gemStyle(gem) {
+  const hex = gemColor(gem);
+  return `--gem-color:${hex};--gem-glow:${rgba(hex, .34)}`;
+}
+
+function findGem(id) {
+  return APP.gems.find(gem => gem.id === id);
+}
+
+function sortGems(gems) {
+  return [...gems].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+}
+
+function showToast(message) {
+  const element = $("#toast");
+  element.textContent = message;
+  element.classList.add("show");
+
   clearTimeout(APP.toastTimer);
-  APP.toastTimer=setTimeout(()=>el.classList.remove("show"),2800);
+  APP.toastTimer = setTimeout(() => {
+    element.classList.remove("show");
+  }, 2900);
 }
-function openLayer(id){
-  $(id).classList.add("is-open");
-  $(id).setAttribute("aria-hidden","false");
-  lockBody();
+
+function setBodyLock() {
+  document.body.classList.toggle(
+    "modal-open",
+    $$(".modal-backdrop").some(el =>
+      el.classList.contains("is-open")
+    )
+  );
 }
-function closeLayer(id){
-  $(id).classList.remove("is-open");
-  $(id).setAttribute("aria-hidden","true");
-  lockBody();
+
+function openLayer(selector) {
+  const el = $(selector);
+  el.classList.add("is-open");
+  el.setAttribute("aria-hidden", "false");
+  setBodyLock();
 }
-function lockBody(){
-  document.body.classList.toggle("modal-open",
-    $$(".modal-backdrop").some(e=>e.classList.contains("is-open")));
+
+function closeLayer(selector) {
+  const el = $(selector);
+  el.classList.remove("is-open");
+  el.setAttribute("aria-hidden", "true");
+  setBodyLock();
+}
+
+function downloadable(text, filename, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function csvCell(value) {
+  return '"' + String(value ?? "").replace(/"/g, '""') + '"';
+}
+
+function csvText(rows) {
+  return rows.map(row => row.map(csvCell).join(",")).join("\r\n");
 }
 
 /* =========================================
-   INDEXEDDB — ORIGINAL DATABASE PRESERVED
+   INDEXEDDB
+   KEEP V1 DATABASE NAME AND VERSION
 ========================================= */
 
-function openDatabase(){
-  return new Promise((resolve,reject)=>{
-    const req=indexedDB.open(DB_NAME,DB_VERSION);
-    req.onupgradeneeded=()=>{
-      const db=req.result;
-      if(!db.objectStoreNames.contains(GEM_STORE))
-        db.createObjectStore(GEM_STORE,{keyPath:"id"});
-      if(!db.objectStoreNames.contains(META_STORE))
-        db.createObjectStore(META_STORE,{keyPath:"key"});
-    };
-    req.onsuccess=()=>resolve(req.result);
-    req.onerror=()=>reject(req.error);
-    req.onblocked=()=>reject(Error("Database blocked"));
-  });
-}
-function transaction(store,mode,operation){
-  return new Promise((resolve,reject)=>{
-    const tx=APP.db.transaction(store,mode);
-    const s=tx.objectStore(store);
-    let result;
-    tx.oncomplete=()=>resolve(result);
-    tx.onerror=()=>reject(tx.error);
-    tx.onabort=()=>reject(tx.error||Error("Aborted"));
-    try{operation(s,v=>result=v)}
-    catch(e){try{tx.abort()}catch(_){}reject(e)}
-  });
-}
-const getAll=()=>transaction(GEM_STORE,"readonly",(s,done)=>{
-  const req=s.getAll();req.onsuccess=()=>done(req.result);
-});
-const getMeta=key=>transaction(META_STORE,"readonly",(s,done)=>{
-  const req=s.get(key);req.onsuccess=()=>done(req.result);
-});
-const saveGem=g=>transaction(GEM_STORE,"readwrite",
-  s=>s.put(clone(g)));
-const deleteGem=id=>transaction(GEM_STORE,"readwrite",
-  s=>s.delete(id));
-
-async function seedDatabase(){
-  const marker=await getMeta("seeded");
-  const existing=await getAll();
-  if(marker?.value||existing.length)return;
-  await new Promise((resolve,reject)=>{
-    const tx=APP.db.transaction([GEM_STORE,META_STORE],"readwrite");
-    const s=tx.objectStore(GEM_STORE);
-    for(const record of GEM_SEED_DATA){
-      const gem=normalizeGem(record);
-      gem.createdAt=new Date().toISOString();
-      gem.updatedAt=gem.createdAt;
-      s.put(gem);
+function openDatabase() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB unavailable"));
+      return;
     }
-    tx.objectStore(META_STORE).put({key:"seeded",value:true});
-    tx.oncomplete=resolve;
-    tx.onerror=()=>reject(tx.error);
-    tx.onabort=()=>reject(tx.error);
+
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+
+      if (!db.objectStoreNames.contains(GEM_STORE)) {
+        db.createObjectStore(GEM_STORE, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(META_STORE)) {
+        db.createObjectStore(META_STORE, { keyPath: "key" });
+      }
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+    request.onblocked = () =>
+      reject(new Error("Database blocked"));
   });
 }
-async function loadCollection(){
-  APP.gems=APP.persistenceAvailable
-    ?(await getAll()).map(normalizeGem)
-    :GEM_SEED_DATA.map(normalizeGem);
+
+function dbTransaction(storeName, mode, operation) {
+  return new Promise((resolve, reject) => {
+    const tx = APP.db.transaction(storeName, mode);
+    const store = tx.objectStore(storeName);
+
+    let result;
+
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+
+    try {
+      operation(store, value => { result = value; });
+    } catch (error) {
+      try { tx.abort(); } catch (_) {}
+      reject(error);
+    }
+  });
+}
+
+function dbGetAll() {
+  return dbTransaction(GEM_STORE, "readonly", (store, done) => {
+    const request = store.getAll();
+    request.onsuccess = () => done(request.result);
+  });
+}
+
+function dbGetMeta(key) {
+  return dbTransaction(META_STORE, "readonly", (store, done) => {
+    const request = store.get(key);
+    request.onsuccess = () => done(request.result);
+  });
+}
+
+function dbSaveGem(gem) {
+  return dbTransaction(GEM_STORE, "readwrite", store => {
+    store.put(clone(gem));
+  });
+}
+
+function dbDeleteGem(id) {
+  return dbTransaction(GEM_STORE, "readwrite", store => {
+    store.delete(id);
+  });
+}
+
+async function seedDatabase() {
+  const existing = await dbGetAll();
+  const marker = await dbGetMeta("seeded");
+
+  if (existing.length || marker?.value) return;
+
+  await new Promise((resolve, reject) => {
+    const tx = APP.db.transaction(
+      [GEM_STORE, META_STORE], "readwrite"
+    );
+
+    const gemStore = tx.objectStore(GEM_STORE);
+    const now = new Date().toISOString();
+
+    for (const record of GEM_SEED_DATA) {
+      const gem = normalizeGem(record);
+      gem.createdAt = now;
+      gem.updatedAt = now;
+      gemStore.put(gem);
+    }
+
+    tx.objectStore(META_STORE).put({
+      key: "seeded",
+      value: true
+    });
+
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+
+async function loadCollection() {
+  if (APP.persistenceAvailable) {
+    APP.gems = (await dbGetAll()).map(normalizeGem);
+  } else {
+    APP.gems = GEM_SEED_DATA.map(normalizeGem);
+  }
+
   renderAll();
 }
 
 /* =========================================
-   RELATIONSHIP EVIDENCE ENGINE
+   COLLECTION SUMMARY
 ========================================= */
 
-/*
-  Evidence groups:
-  science      mineralogical / physical / chemical
-  geography    locations
-  culture      recorded historical associations
-  tradition    symbolic and calendar associations
-  manual       user-created explicit links
+function renderSummary() {
+  const species = new Set(
+    APP.gems.map(g => norm(g.family.species))
+      .filter(Boolean)
+  );
 
-  Each pair is evaluated once. Missing values do
-  not count as matches. A score is an explanatory
-  catalog similarity index, not a probability.
-*/
+  $("#statTotal").textContent = APP.gems.length;
+  $("#statFamilies").textContent = species.size;
 
-function overlap(a,b){
-  const left=new Map(list(a).map(x=>[clean(x),String(x)]));
-  const right=new Set(list(b).map(clean));
-  return [...left].filter(([k])=>k&&right.has(k))
-    .map(([,v])=>v);
+  $("#statRare").textContent = APP.gems.filter(g =>
+    g.rarity === "Rare" || g.rarity === "Exotic"
+  ).length;
+
+  $("#statLinks").textContent =
+    allRelationshipPairs().length;
 }
-function shared(a,b){
-  return filled(a)&&filled(b)&&clean(a)===clean(b);
+
+/* =========================================
+   LIBRARY SEARCH
+========================================= */
+
+function searchableText(gem) {
+  return [
+    gem.name, gem.nickname, ...gem.names,
+    gem.description, gem.rarity, gem.originType,
+    ...gem.classifications,
+    gem.family.group, gem.family.species,
+    gem.family.varietyOf,
+    gem.chemical.formula,
+    ...gem.chemical.traceElements,
+    ...gem.colors.map(c => c.name),
+    ...gem.geography.countries,
+    ...gem.geography.localities,
+    ...gem.history.cultures,
+    ...gem.associations.zodiac,
+    ...gem.associations.birthstone,
+    ...gem.symbolism.meanings,
+    ...gem.symbolism.chakras,
+    ...gem.personal.keywords
+  ].join(" ").toLocaleLowerCase();
 }
-function mid(g,a,b){
-  const x=num(get(g,a)),y=num(get(g,b));
-  if(x===null&&y===null)return null;
-  if(x===null)return y;
-  if(y===null)return x;
-  return (x+y)/2;
-}
-function evidence(a,b){
-  const result=[];
-  function add(group,label,value,strength=1){
-    result.push({group,label,value:String(value),strength});
-  }
 
-  const af=a.family,bf=b.family;
-  if(shared(af.species,bf.species))
-    add("science","Same mineral species",af.species,1);
-  else if(shared(af.group,bf.group))
-    add("science","Same mineral group",af.group,.42);
+function filteredGems() {
+  const query = norm($("#searchInput").value);
+  const rarity = $("#rarityFilter").value;
+  const classification = $("#classFilter").value;
+  const sort = $("#sortFilter").value;
 
-  if(shared(af.varietyOf,bf.varietyOf)&&
-      clean(af.varietyOf)!=="")
-    add("science","Shared parent mineral",af.varietyOf,.8);
+  const rank = {
+    Common: 0, Uncommon: 1, Rare: 2, Exotic: 3
+  };
 
-  if(shared(a.chemical.formula,b.chemical.formula))
-    add("science","Identical recorded formula",
-      a.chemical.formula,.9);
+  const result = APP.gems.filter(g => {
+    if (query && !searchableText(g).includes(query)) return false;
+    if (rarity && g.rarity !== rarity) return false;
 
-  const trace=overlap(a.chemical.traceElements,
-    b.chemical.traceElements);
-  if(trace.length)add("science","Shared trace elements",
-    trace.join(", "),.45);
+    if (classification &&
+        !g.classifications.includes(classification)) {
+      return false;
+    }
 
-  if(shared(a.physical.crystalSystem,
-      b.physical.crystalSystem)&&
-      !["unknown","not applicable"].includes(
-        clean(a.physical.crystalSystem)))
-    add("science","Shared crystal system",
-      a.physical.crystalSystem,.4);
+    if (APP.quickFilter === "favorites" && !g.favorite)
+      return false;
 
-  const hardA=mid(a,"physical.mohsMin","physical.mohsMax");
-  const hardB=mid(b,"physical.mohsMin","physical.mohsMax");
-  if(hardA!==null&&hardB!==null&&Math.abs(hardA-hardB)<=.5)
-    add("science","Similar Mohs hardness",
-      `${hardA} / ${hardB}`,.25);
+    if (APP.quickFilter === "natural" &&
+        g.originType !== "Natural") return false;
 
-  const denA=mid(a,"physical.densityMin","physical.densityMax");
-  const denB=mid(b,"physical.densityMin","physical.densityMax");
-  if(denA!==null&&denB!==null&&
-    Math.abs(denA-denB)<=.15)
-    add("science","Similar density",
-      `${denA.toFixed(2)} / ${denB.toFixed(2)}`,.25);
+    if (APP.quickFilter === "synthetic" &&
+        g.originType !== "Synthetic") return false;
 
-  if(shared(a.optical.luster,b.optical.luster))
-    add("science","Shared luster",a.optical.luster,.15);
+    if (APP.quickFilter === "organic" &&
+        !g.classifications.includes("Organic")) return false;
 
-  const countries=overlap(a.geography.countries,
-    b.geography.countries);
-  if(countries.length)add("geography","Shared countries",
-    countries.join(", "),Math.min(1,.4+countries.length*.12));
+    return true;
+  });
 
-  const places=overlap(a.geography.localities,
-    b.geography.localities);
-  if(places.length)add("geography","Shared deposits",
-    places.join(", "),.9);
+  result.sort((a, b) => {
+    if (sort === "name-desc")
+      return b.name.localeCompare(a.name);
 
-  const cultures=overlap(a.history.cultures,
-    b.history.cultures);
-  if(cultures.length)add("culture","Shared cultures",
-    cultures.join(", "),.8);
+    if (sort === "rarity")
+      return (rank[b.rarity] ?? -1) -
+             (rank[a.rarity] ?? -1);
 
-  const associations=[
-    ["associations.zodiac","Zodiac"],
-    ["associations.planetary","Planetary associations"],
-    ["associations.birthstone","Birthstone months"],
-    ["associations.anniversary","Anniversaries"],
-    ["symbolism.chakras","Chakras"],
-    ["symbolism.meanings","Symbolic meanings"]
-  ];
-  for(const [path,label] of associations){
-    const values=overlap(get(a,path),get(b,path));
-    if(values.length)add("tradition",label,
-      values.join(", "),.45);
-  }
+    if (sort === "hardness")
+      return (numeric(b.physical.mohsMax) ?? -1) -
+             (numeric(a.physical.mohsMax) ?? -1);
 
-  /* Explicit manual relationships by stable ID */
-  const relations=[
-    ...list(a.manualRelations)
-      .filter(r=>r.targetId===b.id),
-    ...list(b.manualRelations)
-      .filter(r=>r.targetId===a.id)
-  ];
-  const seen=new Set();
-  for(const r of relations){
-    const key=clean(r.type)+"|"+clean(r.note);
-    if(seen.has(key))continue;
-    seen.add(key);
-    add("manual",r.type||"Manual relationship",
-      r.note||"Explicitly linked by the collection owner",1);
-  }
+    if (sort === "newest")
+      return String(b.createdAt).localeCompare(
+        String(a.createdAt)
+      );
 
-  /* V1 name-based suggestions: lower authority than manual links */
-  const relatedNames=[
-    ...list(af.related).map(clean),
-    ...list(bf.related).map(clean)
-  ];
-  if(relatedNames.includes(clean(b.name))||
-     relatedNames.includes(clean(a.name)))
-    add("science","Named as related in a record",
-      "Catalog family.related field",.25);
+    if (sort === "oldest")
+      return String(a.createdAt).localeCompare(
+        String(b.createdAt)
+      );
+
+    return a.name.localeCompare(b.name);
+  });
 
   return result;
 }
 
-function scoreEvidence(items,category="all"){
-  const byGroup={};
-  const weights=APP.weights;
-  for(const group of Object.keys(weights)){
-    if(category!=="all"&&category!==group)continue;
-    const groupItems=items.filter(e=>e.group===group);
-    if(!groupItems.length)continue;
-    /*
-      Strength within a group saturates at 1.
-      Several weak matches cannot inflate
-      one category indefinitely.
-    */
-    const contribution=Math.min(1,groupItems
-      .reduce((s,e)=>s+e.strength,0));
-    byGroup[group]=contribution;
+function cardImage(gem) {
+  if (gem.images.cover) {
+    return `<img src="${escapeHTML(gem.images.cover)}"
+      alt="${escapeHTML(gem.name)}" loading="lazy">`;
   }
-  const active=Object.keys(byGroup);
-  if(!active.length)return 0;
-  /*
-    Denominator includes every enabled weight,
-    including groups without a match. This
-    avoids treating one weak match as 100%.
-  */
-  const denominator=Object.entries(weights)
-    .filter(([k,v])=>(category==="all"||category===k)&&v>0)
-    .reduce((s,[,v])=>s+v,0);
-  if(!denominator)return 0;
-  const sum=active.reduce((s,k)=>
-    s+byGroup[k]*weights[k],0);
-  return Math.round(100*sum/denominator);
+
+  return `<div class="gem-placeholder"><span>◇</span></div>`;
 }
 
-function pairInfo(a,b,category="all"){
-  const items=evidence(a,b).filter(e=>
-    category==="all"||e.group===category);
-  return {a,b,items,score:scoreEvidence(items,category)};
-}
-function allPairs(category="all",threshold=0){
-  const pairs=[];
-  for(let i=0;i<APP.gems.length;i++){
-    for(let j=i+1;j<APP.gems.length;j++){
-      const p=pairInfo(APP.gems[i],APP.gems[j],category);
-      if(p.items.length&&p.score>=threshold)pairs.push(p);
-    }
-  }
-  return pairs.sort((a,b)=>b.score-a.score);
-}
-function descriptionOfEvidence(item){
-  const titles={
-    science:"Scientific",
-    geography:"Geographic",
-    culture:"Historical",
-    tradition:"Traditional",
-    manual:"Manual"
-  };
-  return titles[item.group]||item.group;
-}
+function renderCard(gem) {
+  const family = gem.family.varietyOf ||
+    gem.family.species ||
+    gem.family.group ||
+    "Unclassified material";
 
-/* =========================================
-   LIBRARY + SUMMARY
-========================================= */
+  return `
+    <article class="gem-card"
+      data-gem-id="${escapeHTML(gem.id)}"
+      style="${gemStyle(gem)}"
+      role="button" tabindex="0">
 
-function renderSummary(){
-  const species=unique(APP.gems.map(g=>clean(g.family.species))
-    .filter(Boolean));
-  $("#statTotal").textContent=APP.gems.length;
-  $("#statFamilies").textContent=species.length;
-  $("#statRare").textContent=APP.gems.filter(g=>
-    ["Rare","Exotic"].includes(g.rarity)).length;
-  $("#statLinks").textContent=allPairs().length;
-}
-function searchable(g){
-  return [
-    g.name,g.nickname,...g.names,g.description,g.rarity,
-    g.originType,...g.classifications,
-    g.family.group,g.family.species,g.family.varietyOf,
-    g.chemical.formula,...g.chemical.traceElements,
-    ...g.colors.map(c=>c.name),
-    ...g.geography.countries,...g.geography.localities,
-    ...g.history.cultures,...g.associations.birthstone,
-    ...g.symbolism.meanings,...g.personal.keywords
-  ].join(" ").toLocaleLowerCase();
-}
-function filteredGems(){
-  const query=clean($("#searchInput").value);
-  const rarity=$("#rarityFilter").value;
-  const classification=$("#classFilter").value;
-  const sort=$("#sortFilter").value;
-  const rank={Common:0,Uncommon:1,Rare:2,Exotic:3};
-  const found=APP.gems.filter(g=>{
-    if(query&&!searchable(g).includes(query))return false;
-    if(rarity&&g.rarity!==rarity)return false;
-    if(classification&&!g.classifications.includes(
-      classification))return false;
-    if(APP.quickFilter==="favorites"&&!g.favorite)return false;
-    if(APP.quickFilter==="natural"&&g.originType!=="Natural")
-      return false;
-    if(APP.quickFilter==="synthetic"&&g.originType!=="Synthetic")
-      return false;
-    if(APP.quickFilter==="organic"&&
-       !g.classifications.includes("Organic"))return false;
-    return true;
-  });
-  found.sort((a,b)=>{
-    if(sort==="name-desc")return b.name.localeCompare(a.name);
-    if(sort==="rarity")return (rank[b.rarity]??-1)-
-      (rank[a.rarity]??-1);
-    if(sort==="hardness")return
-      (num(b.physical.mohsMax)??-1)-
-      (num(a.physical.mohsMax)??-1);
-    if(sort==="newest")return String(b.createdAt)
-      .localeCompare(String(a.createdAt));
-    return nameSort(a,b);
-  });
-  return found;
-}
-function cover(g){
-  return g.images.cover
-    ?`<img src="${esc(g.images.cover)}"
-        alt="${esc(g.name)}" loading="lazy">`
-    :`<div class="gem-placeholder"><span>◇</span></div>`;
-}
-function gemCard(g){
-  return `<article class="gem-card" data-gem-id="${esc(g.id)}"
-    tabindex="0" role="button" style="${style(g)}">
-    <div class="gem-card-image">
-      ${cover(g)}
-      <button class="favorite-button ${g.favorite?"is-favorite":""}"
-        type="button" data-favorite="${esc(g.id)}">
-        ${g.favorite?"♥":"♡"}</button>
-      ${g.rarity?`<span class="card-rarity">${esc(g.rarity)}</span>`:""}
-    </div>
-    <div class="gem-card-body">
-      <h3 class="gem-card-title">${esc(g.name)}</h3>
-      <p class="gem-card-family">${esc(g.family.varietyOf||
-        g.family.species||g.family.group||"Unclassified material")}</p>
-      <div class="gem-card-details">
-        <div class="card-detail"><span class="card-detail-label">MOHS</span>
-          <span class="card-detail-value">${esc(range(
-            g.physical.mohsMin,g.physical.mohsMax)||"—")}</span></div>
-        <div class="card-detail"><span class="card-detail-label">COLOR</span>
-          <span class="card-detail-value">${esc(
-            g.colors[0]?.name||"—")}</span></div>
-        <div class="card-detail"><span class="card-detail-label">ORIGIN</span>
-          <span class="card-detail-value">${esc(g.originType)}</span></div>
+      <div class="gem-card-image">
+        ${cardImage(gem)}
+
+        <button type="button"
+          class="favorite-button ${gem.favorite ? "is-favorite" : ""}"
+          data-favorite="${escapeHTML(gem.id)}"
+          aria-label="Toggle favorite">
+          ${gem.favorite ? "♥" : "♡"}
+        </button>
+
+        ${gem.rarity ? `<span class="card-rarity">
+          ${escapeHTML(gem.rarity)}</span>` : ""}
       </div>
-    </div>
-  </article>`;
+
+      <div class="gem-card-body">
+        <h3 class="gem-card-title">${escapeHTML(gem.name)}</h3>
+        <p class="gem-card-family">${escapeHTML(family)}</p>
+
+        <div class="gem-card-details">
+          <div class="card-detail">
+            <span class="card-detail-label">MOHS</span>
+            <span class="card-detail-value">
+              ${escapeHTML(formatRange(
+                gem.physical.mohsMin,
+                gem.physical.mohsMax
+              ) || "—")}
+            </span>
+          </div>
+
+          <div class="card-detail">
+            <span class="card-detail-label">COLORS</span>
+            <span class="card-detail-value">
+              ${gem.colors.length}
+            </span>
+          </div>
+
+          <div class="card-detail">
+            <span class="card-detail-label">ORIGIN</span>
+            <span class="card-detail-value">
+              ${escapeHTML(gem.originType || "—")}
+            </span>
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
 }
-function renderLibrary(){
-  const gems=filteredGems();
-  $("#gemGrid").innerHTML=gems.map(gemCard).join("");
-  $("#libraryCount").textContent=`${gems.length} ENTRIES`;
-  $("#emptyState").hidden=gems.length>0;
+
+function renderLibrary() {
+  const visible = filteredGems();
+
+  $("#gemGrid").innerHTML = visible.map(renderCard).join("");
+  $("#libraryCount").textContent =
+    `${visible.length} ${visible.length === 1 ? "ENTRY" : "ENTRIES"}`;
+
+  $("#emptyState").hidden = visible.length !== 0;
 }
-function resetFilters(){
-  $("#searchInput").value="";
-  $("#rarityFilter").value="";
-  $("#classFilter").value="";
-  $("#sortFilter").value="name";
-  APP.quickFilter="all";
-  $$(".filter-chip").forEach(b=>b.classList.toggle(
-    "active",b.dataset.filter==="all"));
+
+function resetFilters() {
+  $("#searchInput").value = "";
+  $("#rarityFilter").value = "";
+  $("#classFilter").value = "";
+  $("#sortFilter").value = "name";
+
+  APP.quickFilter = "all";
+
+  $$(".filter-chip").forEach(button => {
+    button.classList.toggle(
+      "active",
+      button.dataset.filter === "all"
+    );
+  });
+
   renderLibrary();
 }
 
 /* =========================================
-   PROFILE DISPLAY
+   PROFILE PROPERTY DISPLAY
 ========================================= */
 
-function property(label,value,full=false){
-  if(!filled(value))return "";
-  return `<div class="property-item ${full?"full":""}">
-    <span class="property-label">${esc(label)}</span>
-    <div class="property-value">${esc(arrayText(value))}</div>
+function property(label, value, full = false) {
+  if (!isFilled(value)) return "";
+
+  return `<div class="property-item ${full ? "full" : ""}">
+    <span class="property-label">${escapeHTML(label)}</span>
+    <div class="property-value">${escapeHTML(arrayText(value))}</div>
   </div>`;
 }
-function section(title,content,note=""){
-  if(!content.trim())return "";
+
+function profileSection(title, content, note = "") {
+  if (!content.trim()) return "";
+
   return `<section class="profile-section">
-    <div class="profile-section-title">${esc(title)}</div>
+    <div class="profile-section-title">
+      ${escapeHTML(title)}
+    </div>
     <div class="property-grid">${content}</div>
-    ${note?`<div class="profile-note">${esc(note)}</div>`:""}
+    ${note ? `<div class="profile-note">
+      ${escapeHTML(note)}</div>` : ""}
   </section>`;
 }
-function profileSections(g){
-  const result=[];
-  const sections=[
-    ["Identity & Classification",[
-      ["Alternative Names",g.names],
-      ["Origin Type",g.originType],
-      ["Classification",g.classifications,true],
-      ["Rarity",g.rarity],
-      ["Rarity Explanation",g.rarityReason,true]
+
+function profileProperties(gem) {
+  const groups = [
+    ["Identity & Classification", [
+      ["Alternative Names", gem.names],
+      ["Material Origin", gem.originType],
+      ["Classifications", gem.classifications, true],
+      ["Rarity", gem.rarity],
+      ["Rarity Explanation", gem.rarityReason, true]
     ]],
-    ["Mineral Family",[
-      ["Mineral Group",g.family.group],
-      ["Mineral Species",g.family.species],
-      ["Variety Of",g.family.varietyOf],
-      ["Related Gems",g.family.related,true],
-      ["Distinguishing Features",g.family.varietyDifference,true],
-      ["Family Notes",g.family.notes,true]
+
+    ["Mineral Family", [
+      ["Mineral Group", gem.family.group],
+      ["Mineral Species", gem.family.species],
+      ["Parent Mineral", gem.family.varietyOf],
+      ["Related Gems", gem.family.related, true],
+      ["Variety Difference", gem.family.varietyDifference, true],
+      ["Family Notes", gem.family.notes, true]
     ]],
-    ["Chemical Properties",[
-      ["Formula",g.chemical.formula],
-      ["Trace Elements",g.chemical.traceElements],
-      ["Composition",g.chemical.composition,true],
-      ["Color Causes",g.chemical.colorCauses,true],
-      ["Additional Notes",g.chemical.notes,true]
+
+    ["Chemical Composition", [
+      ["Formula", gem.chemical.formula],
+      ["Trace Elements", gem.chemical.traceElements],
+      ["Composition", gem.chemical.composition, true],
+      ["Color Causes", gem.chemical.colorCauses, true],
+      ["Additional Information", gem.chemical.notes, true]
     ]],
-    ["Physical Properties",[
-      ["Mohs Hardness",range(g.physical.mohsMin,g.physical.mohsMax)],
-      ["Density",range(g.physical.densityMin,
-        g.physical.densityMax," g/cm³")],
-      ["Crystal System",g.physical.crystalSystem],
-      ["Cleavage",g.physical.cleavage],
-      ["Fracture",g.physical.fracture],
-      ["Streak",g.physical.streak],
-      ["Tenacity",g.physical.tenacity]
+
+    ["Physical Properties", [
+      ["Mohs Hardness", formatRange(
+        gem.physical.mohsMin, gem.physical.mohsMax
+      )],
+      ["Density", formatRange(
+        gem.physical.densityMin,
+        gem.physical.densityMax, "g/cm³"
+      )],
+      ["Crystal System", gem.physical.crystalSystem],
+      ["Cleavage", gem.physical.cleavage],
+      ["Fracture", gem.physical.fracture],
+      ["Streak", gem.physical.streak],
+      ["Tenacity", gem.physical.tenacity]
     ]],
-    ["Optical Properties",[
-      ["Luster",g.optical.luster],
-      ["Transparency",g.optical.transparency],
-      ["Refractive Index",g.optical.refractiveIndex],
-      ["Birefringence",g.optical.birefringence],
-      ["Luminescence",g.optical.luminescence,true],
-      ["Pleochroism",g.optical.pleochroism,true],
-      ["Dispersion",g.optical.dispersion],
-      ["Other Phenomena",g.optical.other,true]
+
+    ["Optical Properties", [
+      ["Luster", gem.optical.luster],
+      ["Transparency", gem.optical.transparency],
+      ["Refractive Index", gem.optical.refractiveIndex],
+      ["Birefringence", gem.optical.birefringence],
+      ["Luminescence", gem.optical.luminescence, true],
+      ["Pleochroism", gem.optical.pleochroism, true],
+      ["Dispersion", gem.optical.dispersion],
+      ["Other Effects", gem.optical.other, true]
     ]],
-    ["Geographic Distribution",[
-      ["Countries",g.geography.countries,true],
-      ["Mining Locations",g.geography.localities,true],
-      ["Geological Formation",g.geography.geology,true],
-      ["Mining Notes",g.geography.miningNotes,true]
+
+    ["Geographic Distribution", [
+      ["Countries", gem.geography.countries, true],
+      ["Localities", gem.geography.localities, true],
+      ["Formation", gem.geography.geology, true],
+      ["Mining Notes", gem.geography.miningNotes, true]
     ]],
-    ["Discovery",[
-      ["Year",g.discovery.year],
-      ["Location",g.discovery.origin],
-      ["Discoverer",g.discovery.person],
-      ["Country",g.discovery.country],
-      ["Namesake",g.discovery.namesake,true],
-      ["Oldest Specimen",g.discovery.oldestSpecimen,true],
-      ["Further Discoveries",g.discovery.further,true]
+
+    ["Discovery & History", [
+      ["Discovery Year", gem.discovery.year],
+      ["Discovery Location", gem.discovery.origin],
+      ["Discoverer", gem.discovery.person],
+      ["Discovery Country", gem.discovery.country],
+      ["Namesake", gem.discovery.namesake, true],
+      ["Oldest Specimen", gem.discovery.oldestSpecimen, true],
+      ["Further Discoveries", gem.discovery.further, true],
+      ["Historical Cultures", gem.history.cultures, true],
+      ["Historical Facts", gem.history.facts, true],
+      ["Timeline", gem.history.timeline, true]
     ]],
-    ["History & Culture",[
-      ["Prominent Cultures",g.history.cultures,true],
-      ["Historical Facts",g.history.facts,true],
-      ["Timeline",g.history.timeline,true]
+
+    ["Astrological & Traditional Associations", [
+      ["Zodiac", gem.associations.zodiac],
+      ["Planetary", gem.associations.planetary],
+      ["Birthstone", gem.associations.birthstone],
+      ["Anniversary", gem.associations.anniversary],
+      ["Substitute Roles", gem.associations.substitutes, true],
+      ["Systems", gem.associations.systemNotes, true]
     ]],
-    ["Astrological & Calendar Associations",[
-      ["Zodiac",g.associations.zodiac],
-      ["Planetary",g.associations.planetary],
-      ["Birthstone",g.associations.birthstone],
-      ["Anniversary",g.associations.anniversary],
-      ["Substitutes",g.associations.substitutes,true],
-      ["Systems",g.associations.systemNotes,true]
+
+    ["Symbolism & Meaning", [
+      ["Meanings", gem.symbolism.meanings, true],
+      ["Chakras", gem.symbolism.chakras],
+      ["Traditional Properties", gem.symbolism.properties, true],
+      ["Notes", gem.symbolism.notes, true]
     ]],
-    ["Symbolism",[
-      ["Meanings",g.symbolism.meanings,true],
-      ["Chakras",g.symbolism.chakras],
-      ["Traditional Properties",g.symbolism.properties,true],
-      ["Notes",g.symbolism.notes,true]
+
+    ["Traditional Healing Beliefs", [
+      ["Physical", gem.healing.physical, true],
+      ["Emotional", gem.healing.emotional, true],
+      ["Spiritual", gem.healing.spiritual, true],
+      ["Tradition", gem.healing.tradition, true]
     ]],
-    ["Traditional Healing Beliefs",[
-      ["Physical",g.healing.physical,true],
-      ["Emotional",g.healing.emotional,true],
-      ["Spiritual",g.healing.spiritual,true],
-      ["Tradition",g.healing.tradition,true]
+
+    ["Market Value", [
+      ["Price per Carat", formatRange(
+        gem.market.minPrice, gem.market.maxPrice,
+        gem.market.currency || ""
+      )],
+      ["Quality Basis", gem.market.quality, true],
+      ["Treatments", gem.market.treatments, true],
+      ["Market Notes", gem.market.notes, true],
+      ["Price Date", gem.market.priceDate]
     ]],
-    ["Market Value",[
-      ["Price / Carat",(
-        range(g.market.minPrice,g.market.maxPrice)
-          ?range(g.market.minPrice,g.market.maxPrice)+
-            " "+g.market.currency:"")],
-      ["Quality",g.market.quality,true],
-      ["Treatments",g.market.treatments,true],
-      ["Market Notes",g.market.notes,true],
-      ["Price Date",g.market.priceDate]
-    ]],
-    ["References",[
-      ["Sources",g.sources.references,true],
-      ["Confidence",g.sources.confidence],
-      ["Notes",g.sources.notes,true]
-    ]],
-    ["Personal Archive",[
-      ["Opinion",g.personal.opinion,true],
-      ["Notes",g.personal.notes,true],
-      ["Keywords",g.personal.keywords,true]
+
+    ["References & Personal Archive", [
+      ["Sources", gem.sources.references, true],
+      ["Confidence", gem.sources.confidence],
+      ["Source Notes", gem.sources.notes, true],
+      ["Personal Opinion", gem.personal.opinion, true],
+      ["Personal Notes", gem.personal.notes, true],
+      ["Keywords", gem.personal.keywords, true],
+      ["Relationship Notes", gem.relationshipNotes, true]
     ]]
   ];
-  for(const [title,fields] of sections){
-    result.push(section(title,fields.map(f=>property(...f)).join(""),
-      title==="Traditional Healing Beliefs"
-      ?"These entries describe beliefs, not verified medical treatments.":""));
+
+  let output = "";
+
+  for (const [title, rows] of groups) {
+    const content = rows.map(row => property(...row)).join("");
+
+    const note = title === "Traditional Healing Beliefs"
+      ? "These entries document cultural beliefs, not verified medical effects."
+      : "";
+
+    output += profileSection(title, content, note);
+
+    if (title === "Optical Properties" && gem.colors.length) {
+      output += `<section class="profile-section">
+        <div class="profile-section-title">Color Variations</div>
+        <div class="color-display-list">
+          ${gem.colors.map(c => `
+            <div class="color-display">
+              <span class="color-dot"></span>
+              <div>
+                <div class="color-name">${escapeHTML(c.name)}</div>
+                <div class="color-frequency">
+                  ${escapeHTML(c.rarity || "Unspecified")}
+                </div>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+      </section>`;
+    }
   }
-  if(g.colors.length){
-    result.splice(5,0,`<section class="profile-section">
-      <div class="profile-section-title">Color Variations</div>
-      <div class="color-display-list">${g.colors.map(c=>`
-        <div class="color-display">
-          <span class="color-dot"
-            style="background:${color({appearance:{color:c.hex}})}"></span>
-          <div><div class="color-name">${esc(c.name)}</div>
-            <div class="color-frequency">${esc(c.rarity)}</div></div>
-        </div>`).join("")}</div></section>`);
+
+  const connected = allRelationshipPairs()
+    .filter(pair =>
+      pair.a.id === gem.id || pair.b.id === gem.id
+    )
+    .slice(0, 10);
+
+  if (connected.length) {
+    output += profileSection(
+      "Related Gemstones",
+      connected.map(pair => {
+        const other = pair.a.id === gem.id ? pair.b : pair.a;
+        return `<div class="property-item">
+          <button class="inspector-button"
+            type="button"
+            data-open-gem="${escapeHTML(other.id)}">
+            ${escapeHTML(other.name)} · ${pair.score}%
+          </button>
+        </div>`;
+      }).join(""),
+      "Scores compare recorded properties; they are not mineralogical certainty."
+    );
   }
-  const relationCards=allPairs().filter(p=>
-    p.a.id===g.id||p.b.id===g.id).slice(0,8);
-  result.push(section("Connected Gemstones",
-    relationCards.map(p=>{
-      const other=p.a.id===g.id?p.b:p.a;
-      return `<div class="property-item">
-        <button class="inspector-button"
-          data-open-gem="${esc(other.id)}">
-          ${esc(other.name)} · ${p.score}% similarity
-        </button></div>`;
-    }).join(""),"Scores are based on recorded catalog evidence."));
-  result.push(section("Relationship Notes",
-    property("Manual / Research Notes",g.relationshipNotes,true)));
-  return result.join("");
+
+  return output;
 }
-function openProfile(id){
-  const g=findGem(id);if(!g)return;
-  APP.currentGemId=id;
-  const banner=g.images.banner||g.images.cover;
-  $("#profileContent").innerHTML=`<div style="${style(g)}">
-    <div class="profile-hero">
-      <div class="profile-banner">
-        ${banner?`<img src="${esc(banner)}" alt="">`:""}
+
+function openProfile(id) {
+  const gem = findGem(id);
+  if (!gem) return;
+
+  APP.currentGemId = id;
+  const banner = gem.images.banner || gem.images.cover;
+
+  $("#profileContent").innerHTML = `
+    <div style="${gemStyle(gem)}">
+
+      <div class="profile-hero">
+        <div class="profile-banner">
+          ${banner ? `<img src="${escapeHTML(banner)}" alt="">` : ""}
+        </div>
+
+        <div class="profile-top-actions">
+          <button class="icon-button"
+            data-profile-action="edit"
+            type="button" title="Edit">✎</button>
+
+          <button class="icon-button"
+            data-profile-action="close"
+            type="button" title="Close">×</button>
+        </div>
+
+        <div class="profile-hero-content">
+          <div class="profile-overline">
+            ${escapeHTML(
+              gem.family.species ||
+              gem.family.group ||
+              "Gemstone Archive"
+            )}
+          </div>
+
+          <h2 class="profile-name">
+            ${escapeHTML(gem.name)}
+          </h2>
+
+          ${gem.nickname ? `
+            <div class="profile-nicknames">
+              ${escapeHTML(gem.nickname)}
+            </div>` : ""}
+
+          <div class="profile-tags">
+            ${[gem.rarity, ...gem.classifications]
+              .filter(Boolean)
+              .map((tag, i) => `<span class="tag ${i === 0 ? "gold" : ""}">
+                ${escapeHTML(tag)}</span>`)
+              .join("")}
+          </div>
+        </div>
       </div>
-      <div class="profile-top-actions">
-        <button class="icon-button" data-profile="edit"
-          type="button">✎</button>
-        <button class="icon-button" data-profile="close"
-          type="button">×</button>
-      </div>
-      <div class="profile-hero-content">
-        <div class="profile-overline">${esc(
-          g.family.species||g.family.group||"Gemstone Archive")}</div>
-        <h2 class="profile-name">${esc(g.name)}</h2>
-        ${g.nickname?`<div class="profile-nicknames">
-          ${esc(g.nickname)}</div>`:""}
-        <div class="profile-tags">
-          ${[g.rarity,...g.classifications].filter(Boolean)
-            .map((tag,i)=>`<span class="tag ${i===0?"gold":""}">
-              ${esc(tag)}</span>`).join("")}
+
+      <div class="profile-content">
+        ${gem.description ? `<p class="profile-description">
+          ${escapeHTML(gem.description)}</p>` : ""}
+
+        ${profileProperties(gem)}
+
+        <div class="profile-bottom-actions">
+          <button class="primary-button"
+            data-profile-action="edit" type="button">
+            ✎ Edit Gemstone
+          </button>
+
+          <button class="secondary-button"
+            data-profile-action="compare" type="button">
+            ⚖ Compare
+          </button>
+
+          <button class="secondary-button"
+            data-profile-action="atlas" type="button">
+            ◎ Atlas
+          </button>
+
+          <button class="secondary-button"
+            data-profile-action="duplicate" type="button">
+            Duplicate
+          </button>
+
+          <button class="danger-button"
+            data-profile-action="delete" type="button">
+            Delete
+          </button>
         </div>
       </div>
     </div>
-    <div class="profile-content">
-      ${g.description?`<div class="profile-description">
-        ${esc(g.description)}</div>`:""}
-      ${profileSections(g)}
-      <div class="profile-bottom-actions">
-        <button class="primary-button" data-profile="edit"
-          type="button">✎ Edit Gemstone</button>
-        <button class="secondary-button" data-profile="compare"
-          type="button">⚖ Compare</button>
-        <button class="secondary-button" data-profile="atlas"
-          type="button">◎ Atlas</button>
-        <button class="secondary-button" data-profile="duplicate"
-          type="button">Duplicate</button>
-        <button class="danger-button" data-profile="delete"
-          type="button">Delete</button>
-      </div>
-    </div>
-  </div>`;
-  $("#profileModal").scrollTop=0;
+  `;
+
+  $("#profileModal").scrollTop = 0;
   openLayer("#profileBackdrop");
 }
-function closeProfile(){
+
+function closeProfile() {
   closeLayer("#profileBackdrop");
-  APP.currentGemId=null;
+  APP.currentGemId = null;
 }
 
 /* =========================================
-   EDITOR
+   GEMSTONE EDITOR
 ========================================= */
 
-function renderField(f,g){
-  const value=get(g,f.path),path=esc(f.path);
-  let control="";
-  if(f.type==="textarea"){
-    control=`<textarea data-path="${path}">${esc(value)}</textarea>`;
-  }else if(f.type==="tags"){
-    control=`<input data-path="${path}" data-kind="tags"
-      type="text" value="${esc(arrayText(value))}"
+function renderField(field, gem) {
+  const value = valueAt(gem, field.path);
+  const path = escapeHTML(field.path);
+  const placeholder = escapeHTML(field.placeholder || "");
+
+  let input = "";
+
+  if (field.type === "textarea") {
+    input = `<textarea data-path="${path}"
+      placeholder="${placeholder}">${escapeHTML(value)}</textarea>`;
+  } else if (field.type === "tags") {
+    input = `<input type="text"
+      data-path="${path}" data-value-type="tags"
+      value="${escapeHTML(arrayText(value))}"
       placeholder="Separate entries with commas">`;
-  }else if(f.type==="number"){
-    control=`<input data-path="${path}" data-kind="number"
-      type="number" step="${f.step||"any"}"
-      ${f.min!==undefined?`min="${f.min}"`:""}
-      ${f.max!==undefined?`max="${f.max}"`:""}
-      value="${value===null?"":esc(value)}">`;
-  }else if(f.type==="select"){
-    control=`<select data-path="${path}">
-      ${f.options.map(v=>`<option value="${esc(v)}"
-        ${v===value?"selected":""}>${esc(v||"Not specified")}
-        </option>`).join("")}</select>`;
-  }else{
-    control=`<input type="text" data-path="${path}"
-      value="${esc(value)}" ${f.required?"required":""}>`;
+  } else if (field.type === "number") {
+    input = `<input type="number"
+      data-path="${path}" data-value-type="number"
+      step="${field.step ?? "any"}"
+      ${field.min !== undefined ? `min="${field.min}"` : ""}
+      ${field.max !== undefined ? `max="${field.max}"` : ""}
+      value="${value === null || value === undefined
+        ? "" : escapeHTML(value)}">`;
+  } else if (field.type === "select") {
+    input = `<select data-path="${path}">
+      ${field.options.map(option => `
+        <option value="${escapeHTML(option)}"
+          ${option === value ? "selected" : ""}>
+          ${escapeHTML(option || "Not specified")}
+        </option>`).join("")}
+    </select>`;
+  } else {
+    input = `<input type="text"
+      data-path="${path}"
+      value="${escapeHTML(value)}"
+      placeholder="${placeholder}"
+      ${field.required ? "required" : ""}>`;
   }
-  return `<div class="editor-field ${f.wide?"wide":""}">
-    <label>${esc(f.label)}${f.required?" *":""}</label>
-    ${control}${f.hint?`<span class="field-hint">
-      ${esc(f.hint)}</span>`:""}</div>`;
+
+  return `<div class="editor-field ${field.wide ? "wide" : ""}">
+    <label>${escapeHTML(field.label)}${field.required ? " *" : ""}</label>
+    ${input}
+    ${field.hint ? `<span class="field-hint">
+      ${escapeHTML(field.hint)}</span>` : ""}
+  </div>`;
 }
-function classificationEditor(g){
+
+function renderClassifications(gem) {
   return `<div class="checkbox-collection">
-    ${GEM_CONFIG.classifications.map(c=>`
+    ${GEM_CONFIG.classifications.map(name => `
       <label class="classification-option">
-        <input type="checkbox" data-classification="${esc(c)}"
-          ${g.classifications.includes(c)?"checked":""}>
-        <span>${esc(c)}</span>
-      </label>`).join("")}</div>`;
+        <input type="checkbox"
+          data-classification="${escapeHTML(name)}"
+          ${gem.classifications.includes(name) ? "checked" : ""}>
+        <span>${escapeHTML(name)}</span>
+      </label>
+    `).join("")}
+  </div>`;
 }
-function imageEditor(g){
-  return `<div class="editor-field-grid">
-    ${["cover","banner"].map(type=>`
-      <div class="editor-field wide">
-        <span class="field-label">${type==="cover"
-          ?"Library Cover Image":"Profile Banner Image"}</span>
-        <div class="editor-image-preview">
-          ${g.images[type]?`<img src="${esc(g.images[type])}" alt="">`
-            :"No image selected"}
-        </div>
-        <div class="image-actions">
-          <label class="image-upload-label">＋ Choose from Gallery
-            <input class="upload-input" type="file" accept="image/*"
-              data-image-type="${type}"></label>
-          <button class="image-remove" type="button"
-            data-remove-image="${type}">Remove Image</button>
-        </div>
-      </div>`).join("")}
+
+function renderImageEditor(gem) {
+  const imageField = (type, title) => `
     <div class="editor-field wide">
-      <label>Accent Color</label>
-      <input type="color" data-path="appearance.color"
-        value="${color(g)}">
+      <div class="field-label">${title}</div>
+
+      <div class="editor-image-preview">
+        ${gem.images[type]
+          ? `<img src="${escapeHTML(gem.images[type])}" alt="">`
+          : "No image selected"}
+      </div>
+
+      <div class="image-actions">
+        <label class="image-upload-label">
+          ＋ Choose from Gallery
+          <input type="file"
+            class="upload-input"
+            accept="image/*"
+            data-image-type="${type}">
+        </label>
+
+        <button class="image-remove"
+          type="button"
+          data-remove-image="${type}">
+          Remove Image
+        </button>
+      </div>
+    </div>`;
+
+  return `<div class="editor-field-grid">
+    ${imageField("cover", "Library Cover Image")}
+    ${imageField("banner", "Profile Banner Image")}
+    <div class="editor-field wide">
+      <p class="field-hint">
+        Gemstone colors are entered under Science → Gemstone Colors.
+        No color picker is required.
+      </p>
     </div>
   </div>`;
 }
-function colorEditor(g){
-  return `<div class="color-editor-list">
-    ${g.colors.map((c,i)=>`
-      <div class="color-editor-row" data-color-index="${i}">
-        <input data-color-field="name" aria-label="Color name"
-          value="${esc(c.name)}" placeholder="Color name">
-        <select data-color-field="rarity" aria-label="Color rarity">
-          ${GEM_CONFIG.colorRarities.map(r=>`<option
-            ${r===c.rarity?"selected":""}>${esc(r)}</option>`).join("")}
-        </select>
-        <input type="color" data-color-field="hex"
-          aria-label="Color swatch"
-          value="${color({appearance:{color:c.hex}})}">
-        <button class="remove-color" data-remove-color="${i}"
-          type="button">×</button>
-      </div>`).join("")}
-  </div>
-  <button class="add-row-button" id="addColorRow"
-    type="button">＋ Add Color Variation</button>`;
+
+function renderColorEditor(gem) {
+  return `
+    <div class="color-editor-list">
+      ${gem.colors.map((color, index) => `
+        <div class="color-editor-row" data-color-index="${index}">
+          <input type="text"
+            data-color-field="name"
+            value="${escapeHTML(color.name)}"
+            placeholder="e.g. Deep Violet"
+            aria-label="Gemstone color">
+
+          <select data-color-field="rarity"
+            aria-label="Color rarity">
+            ${GEM_CONFIG.colorRarities.map(level => `
+              <option value="${escapeHTML(level)}"
+                ${level === color.rarity ? "selected" : ""}>
+                ${escapeHTML(level)}
+              </option>
+            `).join("")}
+          </select>
+
+          <button type="button"
+            class="remove-color"
+            data-remove-color="${index}"
+            aria-label="Remove color">×</button>
+        </div>
+      `).join("")}
+    </div>
+
+    <button type="button"
+      class="add-row-button"
+      id="addColorRow">
+      ＋ Add Color Variation
+    </button>
+
+    <p class="color-editor-hint">
+      Enter color names exactly as you want them recorded.
+      Overall gemstone rarity and individual color rarity are separate.
+    </p>
+  `;
 }
-function manualEditor(g){
-  const candidates=APP.gems.filter(x=>x.id!==g.id);
-  return `<div class="manual-editor-list">
-    ${g.manualRelations.map((r,i)=>`
-      <div class="manual-row" data-manual-index="${i}">
-        <select data-manual-field="targetId"
-          aria-label="Related gemstone">
-          <option value="">Choose gemstone</option>
-          ${candidates.map(x=>`<option value="${esc(x.id)}"
-            ${r.targetId===x.id?"selected":""}>
-            ${esc(x.name)}</option>`).join("")}
-        </select>
-        <select data-manual-field="type"
-          aria-label="Relationship type">
-          ${GEM_CONFIG.relationshipTypes.map(t=>`
-            <option ${r.type===t?"selected":""}>
-              ${esc(t)}</option>`).join("")}
-        </select>
-        <button class="remove-manual"
-          data-remove-manual="${i}" type="button">×</button>
-        <textarea data-manual-field="note"
-          placeholder="Explain this relationship">${esc(r.note)}</textarea>
-      </div>`).join("")}
-  </div>
-  <button class="add-row-button" id="addManualRow"
-    type="button">＋ Add Manual Relationship</button>
-  <p class="field-hint" style="margin-top:12px">
-    Manual connections are treated as undirected for graph analysis.
-    Their original record is preserved on the gemstone where you add them.
-  </p>`;
+
+function renderManualEditor(gem) {
+  const candidates = sortGems(APP.gems)
+    .filter(g => g.id !== gem.id);
+
+  return `
+    <div class="manual-editor-list">
+      ${gem.manualRelations.map((relation, index) => `
+        <div class="manual-row" data-manual-index="${index}">
+
+          <select data-manual-field="targetId"
+            aria-label="Connected gemstone">
+            <option value="">Choose gemstone</option>
+            ${candidates.map(g => `
+              <option value="${escapeHTML(g.id)}"
+                ${relation.targetId === g.id ? "selected" : ""}>
+                ${escapeHTML(g.name)}
+              </option>
+            `).join("")}
+          </select>
+
+          <select data-manual-field="type"
+            aria-label="Relationship type">
+            ${GEM_CONFIG.relationshipTypes.map(type => `
+              <option value="${escapeHTML(type)}"
+                ${relation.type === type ? "selected" : ""}>
+                ${escapeHTML(type)}
+              </option>
+            `).join("")}
+          </select>
+
+          <button type="button"
+            class="remove-manual"
+            data-remove-manual="${index}">×</button>
+
+          <textarea data-manual-field="note"
+            placeholder="Explain the relationship">${escapeHTML(
+              relation.note
+            )}</textarea>
+
+        </div>
+      `).join("")}
+    </div>
+
+    <button type="button"
+      class="add-row-button"
+      id="addManualRow">
+      ＋ Add Manual Relationship
+    </button>
+
+    <p class="field-hint" style="margin-top:13px">
+      Manual links refer to gemstone IDs, so changing a gemstone's
+      name will not break its connections.
+      A user-entered relationship is not automatically verified.
+    </p>
+  `;
 }
-function renderEditorTabs(){
-  $("#editorTabs").innerHTML=GEM_CONFIG.editorTabs.map(tab=>`
-    <button class="editor-tab ${APP.activeTab===tab.id?"active":""}"
-      data-editor-tab="${tab.id}" type="button">
-      ${esc(tab.label)}</button>`).join("");
+
+function renderEditorTabs() {
+  $("#editorTabs").innerHTML = GEM_CONFIG.editorTabs.map(tab => `
+    <button type="button"
+      class="editor-tab ${tab.id === APP.activeTab ? "active" : ""}"
+      data-editor-tab="${tab.id}">
+      ${escapeHTML(tab.label)}
+    </button>
+  `).join("");
 }
-function renderEditorFields(){
-  if(!APP.editingGem)return;
-  const tab=GEM_CONFIG.editorTabs.find(t=>t.id===APP.activeTab);
-  $("#editorFields").innerHTML=tab.groups.map(group=>{
-    let body="";
-    switch(group.special){
+
+function renderEditorFields() {
+  if (!APP.editingGem) return;
+
+  const tab = GEM_CONFIG.editorTabs.find(t =>
+    t.id === APP.activeTab
+  );
+
+  if (!tab) return;
+
+  $("#editorFields").innerHTML = tab.groups.map(group => {
+    let body;
+
+    switch (group.special) {
       case "classifications":
-        body=classificationEditor(APP.editingGem);break;
-      case "images":body=imageEditor(APP.editingGem);break;
-      case "colors":body=colorEditor(APP.editingGem);break;
-      case "manual":body=manualEditor(APP.editingGem);break;
+        body = renderClassifications(APP.editingGem);
+        break;
+      case "images":
+        body = renderImageEditor(APP.editingGem);
+        break;
+      case "colors":
+        body = renderColorEditor(APP.editingGem);
+        break;
+      case "manual":
+        body = renderManualEditor(APP.editingGem);
+        break;
       default:
-        body=`<div class="editor-field-grid">
-          ${group.fields.map(f=>renderField(f,APP.editingGem)).join("")}
+        body = `<div class="editor-field-grid">
+          ${group.fields.map(field =>
+            renderField(field, APP.editingGem)
+          ).join("")}
         </div>`;
     }
+
     return `<section class="editor-group">
-      <div class="editor-group-heading">${esc(group.title)}</div>
-      <p class="editor-group-description">${esc(group.description)}</p>
-      ${body}</section>`;
+      <div class="editor-group-heading">
+        ${escapeHTML(group.title)}
+      </div>
+      <p class="editor-group-description">
+        ${escapeHTML(group.description || "")}
+      </p>
+      ${body}
+    </section>`;
   }).join("");
-  $("#editorFields").scrollTop=0;
+
+  $("#editorFields").scrollTop = 0;
 }
-function setEditorTab(id){
-  APP.activeTab=id;renderEditorTabs();renderEditorFields();
+
+function setEditorTab(id) {
+  APP.activeTab = id;
+  renderEditorTabs();
+  renderEditorFields();
 }
-function openEditor(id=null){
-  const existing=id?findGem(id):null;
-  APP.editingGem=existing?clone(existing):createEmptyGem();
-  if(!existing)APP.editingGem.id=uid();
-  APP.activeTab="identity";
-  $("#editorTitle").textContent=existing
-    ?`Edit ${existing.name}`:"New Gemstone";
-  renderEditorTabs();renderEditorFields();
+
+function openEditor(id = null) {
+  const existing = id ? findGem(id) : null;
+
+  APP.editingGem = existing
+    ? clone(existing)
+    : createEmptyGem();
+
+  if (!existing) APP.editingGem.id = uid();
+
+  APP.activeTab = "identity";
+  $("#editorTitle").textContent = existing
+    ? "Edit " + existing.name
+    : "New Gemstone";
+
+  renderEditorTabs();
+  renderEditorFields();
   openLayer("#editorBackdrop");
 }
-function closeEditor(){
+
+function closeEditor() {
   closeLayer("#editorBackdrop");
-  APP.editingGem=null;
+  APP.editingGem = null;
 }
-function updateEditorField(el){
-  if(!APP.editingGem)return;
-  let value=el.value;
-  if(el.dataset.kind==="tags")value=textArray(value);
-  if(el.dataset.kind==="number")value=num(value);
-  put(APP.editingGem,el.dataset.path,value);
+
+function updateEditorValue(target) {
+  if (!APP.editingGem || !target.dataset.path) return;
+
+  let value = target.value;
+
+  if (target.dataset.valueType === "tags")
+    value = textArray(value);
+
+  if (target.dataset.valueType === "number")
+    value = numeric(value);
+
+  setAt(APP.editingGem, target.dataset.path, value);
 }
-function updateColor(el){
-  const row=el.closest("[data-color-index]");
-  if(!row)return;
-  const c=APP.editingGem.colors[Number(row.dataset.colorIndex)];
-  if(c)c[el.dataset.colorField]=el.value;
+
+function updateColorValue(target) {
+  const row = target.closest("[data-color-index]");
+  if (!row || !APP.editingGem) return;
+
+  const color = APP.editingGem.colors[
+    Number(row.dataset.colorIndex)
+  ];
+
+  if (color) color[target.dataset.colorField] = target.value;
 }
-function updateManual(el){
-  const row=el.closest("[data-manual-index]");
-  if(!row)return;
-  const r=APP.editingGem.manualRelations[
-    Number(row.dataset.manualIndex)];
-  if(r)r[el.dataset.manualField]=el.value;
+
+function updateManualValue(target) {
+  const row = target.closest("[data-manual-index]");
+  if (!row || !APP.editingGem) return;
+
+  const relation = APP.editingGem.manualRelations[
+    Number(row.dataset.manualIndex)
+  ];
+
+  if (relation) {
+    relation[target.dataset.manualField] = target.value;
+  }
 }
-function imageToDataURL(file){
-  return new Promise((resolve,reject)=>{
-    if(!file?.type.startsWith("image/")){
-      reject(Error("Not an image"));return;
+
+function imageToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type.startsWith("image/")) {
+      reject(new Error("Please select an image"));
+      return;
     }
-    const reader=new FileReader();
-    reader.onerror=()=>reject(Error("File reading failed"));
-    reader.onload=()=>{
-      const img=new Image();
-      img.onerror=()=>reject(Error("Invalid image"));
-      img.onload=()=>{
-        const scale=Math.min(1,1600/
-          Math.max(img.naturalWidth,img.naturalHeight));
-        const canvas=document.createElement("canvas");
-        canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));
-        canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
-        const ctx=canvas.getContext("2d");
-        if(!ctx){reject(Error("Canvas unavailable"));return}
-        ctx.drawImage(img,0,0,canvas.width,canvas.height);
-        resolve(canvas.toDataURL("image/jpeg",.82));
+
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(
+      new Error("Image could not be read")
+    );
+
+    reader.onload = () => {
+      const image = new Image();
+
+      image.onerror = () => reject(
+        new Error("Image could not be opened")
+      );
+
+      image.onload = () => {
+        const scale = Math.min(
+          1, 1600 / Math.max(
+            image.naturalWidth, image.naturalHeight
+          )
+        );
+
+        const canvas = document.createElement("canvas");
+
+        canvas.width = Math.max(1,
+          Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1,
+          Math.round(image.naturalHeight * scale));
+
+        const ctx = canvas.getContext("2d");
+
+        if (!ctx) {
+          reject(new Error("Canvas unavailable"));
+          return;
+        }
+
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+        try {
+          resolve(canvas.toDataURL("image/jpeg", .82));
+        } catch (error) {
+          reject(error);
+        }
       };
-      img.src=reader.result;
+
+      image.src = reader.result;
     };
+
     reader.readAsDataURL(file);
   });
 }
-async function uploadImage(el){
-  const draft=APP.editingGem;
-  const type=el.dataset.imageType;
-  const file=el.files?.[0];
-  if(!file||!draft)return;
-  try{
-    const result=await imageToDataURL(file);
-    if(APP.editingGem!==draft)return;
-    draft.images[type]=result;
-    renderEditorFields();toast("Image added to draft");
-  }catch(e){console.error(e);toast("Image processing failed")}
-}
-async function saveEditingGem(){
-  if(!APP.editingGem)return;
-  const gem=normalizeGem(clone(APP.editingGem));
-  gem.name=gem.name.trim();
-  if(!gem.name){setEditorTab("identity");toast("Name required");return}
-  const p=gem.physical;
-  if([p.mohsMin,p.mohsMax].some(v=>
-    num(v)!==null&&(num(v)<0||num(v)>10))||
-    (num(p.mohsMin)!==null&&num(p.mohsMax)!==null&&
-      p.mohsMin>p.mohsMax)){
-    setEditorTab("science");toast("Check Mohs hardness");return;
-  }
-  gem.colors=gem.colors.filter(c=>clean(c.name));
-  gem.manualRelations=gem.manualRelations.filter(r=>
-    r.targetId&&r.targetId!==gem.id&&findGem(r.targetId))
-    .filter((r,i,a)=>a.findIndex(x=>
-      x.targetId===r.targetId&&x.type===r.type)===i);
 
-  const now=new Date().toISOString();
-  gem.createdAt=findGem(gem.id)?.createdAt||now;
-  gem.updatedAt=now;
-  if(APP.persistenceAvailable){
-    try{await saveGem(gem)}
-    catch(e){console.error(e);toast("Save failed");return}
+async function handleImageUpload(input) {
+  const draft = APP.editingGem;
+  const file = input.files?.[0];
+  const type = input.dataset.imageType;
+
+  if (!draft || !file) return;
+
+  try {
+    const result = await imageToDataURL(file);
+
+    if (APP.editingGem !== draft) return;
+
+    draft.images[type] = result;
+    renderEditorFields();
+    showToast("Image added to draft");
+  } catch (error) {
+    console.error(error);
+    showToast("Image could not be processed");
   }
-  const index=APP.gems.findIndex(g=>g.id===gem.id);
-  if(index<0)APP.gems.push(gem);
-  else APP.gems[index]=gem;
-  closeEditor();renderAll();openProfile(gem.id);
-  toast(APP.persistenceAvailable?"Gemstone saved":"Session-only changes");
 }
-async function toggleFavorite(id){
-  const g=findGem(id);if(!g)return;
-  const updated=clone(g);
-  updated.favorite=!updated.favorite;
-  updated.updatedAt=new Date().toISOString();
-  try{
-    if(APP.persistenceAvailable)await saveGem(updated);
-    Object.assign(g,updated);renderAll();
-  }catch(e){console.error(e);toast("Favorite not saved")}
+
+async function saveEditingGem() {
+  if (!APP.editingGem) return;
+
+  const gem = normalizeGem(clone(APP.editingGem));
+  gem.name = gem.name.trim();
+
+  if (!gem.name) {
+    setEditorTab("identity");
+    showToast("Please enter a gemstone name");
+    return;
+  }
+
+  const p = gem.physical;
+
+  const invalidMohs = [p.mohsMin, p.mohsMax].some(
+    value => numeric(value) !== null &&
+      (Number(value) < 0 || Number(value) > 10)
+  );
+
+  if (invalidMohs ||
+    (numeric(p.mohsMin) !== null &&
+     numeric(p.mohsMax) !== null &&
+     p.mohsMin > p.mohsMax)) {
+    setEditorTab("science");
+    showToast("Please check the Mohs hardness range");
+    return;
+  }
+
+  if (numeric(p.densityMin) !== null &&
+      numeric(p.densityMax) !== null &&
+      p.densityMin > p.densityMax) {
+    setEditorTab("science");
+    showToast("Density minimum exceeds maximum");
+    return;
+  }
+
+  gem.colors = gem.colors.filter(c => norm(c.name));
+
+  gem.manualRelations = gem.manualRelations.filter(
+    relation => relation.targetId &&
+      relation.targetId !== gem.id &&
+      !!findGem(relation.targetId)
+  );
+
+  const now = new Date().toISOString();
+  gem.createdAt = findGem(gem.id)?.createdAt || now;
+  gem.updatedAt = now;
+
+  if (APP.persistenceAvailable) {
+    try {
+      await dbSaveGem(gem);
+    } catch (error) {
+      console.error(error);
+      showToast("Save failed — check browser storage");
+      return;
+    }
+  }
+
+  const index = APP.gems.findIndex(g => g.id === gem.id);
+
+  if (index < 0) APP.gems.push(gem);
+  else APP.gems[index] = gem;
+
+  closeEditor();
+  renderAll();
+  openProfile(gem.id);
+
+  showToast(APP.persistenceAvailable
+    ? "Gemstone saved"
+    : "Saved for this session only");
 }
-async function duplicateGem(id){
-  const g=findGem(id);if(!g)return;
-  const copy=clone(g);copy.id=uid();copy.name+=" (Copy)";
-  copy.manualRelations=[];copy.favorite=false;
-  copy.createdAt=new Date().toISOString();
-  copy.updatedAt=copy.createdAt;
-  try{
-    if(APP.persistenceAvailable)await saveGem(copy);
+
+async function toggleFavorite(id) {
+  const gem = findGem(id);
+  if (!gem) return;
+
+  const updated = clone(gem);
+  updated.favorite = !updated.favorite;
+  updated.updatedAt = new Date().toISOString();
+
+  try {
+    if (APP.persistenceAvailable) await dbSaveGem(updated);
+    Object.assign(gem, updated);
+    renderAll();
+  } catch (error) {
+    console.error(error);
+    showToast("Favorite could not be saved");
+  }
+}
+
+async function duplicateGem(id) {
+  const original = findGem(id);
+  if (!original) return;
+
+  const copy = clone(original);
+
+  copy.id = uid();
+  copy.name += " (Copy)";
+  copy.favorite = false;
+  copy.manualRelations = [];
+
+  copy.createdAt = new Date().toISOString();
+  copy.updatedAt = copy.createdAt;
+
+  try {
+    if (APP.persistenceAvailable) await dbSaveGem(copy);
     APP.gems.push(copy);
-    closeProfile();renderAll();openProfile(copy.id);
-    toast("Gemstone duplicated");
-  }catch(e){console.error(e);toast("Duplicate failed")}
+
+    closeProfile();
+    renderAll();
+    openProfile(copy.id);
+    showToast("Gemstone duplicated");
+  } catch (error) {
+    console.error(error);
+    showToast("Duplicate failed");
+  }
 }
-function requestDelete(id){
-  const g=findGem(id);if(!g)return;
-  APP.deleteId=id;
-  $("#confirmTitle").textContent="Delete gemstone?";
-  $("#confirmMessage").textContent=
-    `"${g.name}" will be removed from the collection.`;
+
+function requestDelete(id) {
+  const gem = findGem(id);
+  if (!gem) return;
+
+  APP.deleteId = id;
+
+  $("#confirmTitle").textContent = "Delete gemstone?";
+  $("#confirmMessage").textContent =
+    `"${gem.name}" will be removed from your collection.`;
+
   openLayer("#confirmBackdrop");
 }
-async function executeDelete(){
-  const id=APP.deleteId;
-  if(!id)return;
-  try{
-    if(APP.persistenceAvailable)await deleteGem(id);
-    APP.gems=APP.gems.filter(g=>g.id!==id);
-    APP.compareIds=APP.compareIds.filter(x=>x!==id);
-    /*
-      Remove dangling manual relations from other records.
-    */
-    for(const g of APP.gems){
-      if(!g.manualRelations.some(r=>r.targetId===id))continue;
-      const updated=clone(g);
-      updated.manualRelations=updated.manualRelations
-        .filter(r=>r.targetId!==id);
-      if(APP.persistenceAvailable)await saveGem(updated);
-      Object.assign(g,updated);
+
+async function executeDelete() {
+  const id = APP.deleteId;
+  if (!id) return;
+
+  try {
+    const affected = APP.gems
+      .filter(g => g.id !== id &&
+        g.manualRelations.some(r => r.targetId === id))
+      .map(g => {
+        const copy = clone(g);
+        copy.manualRelations = copy.manualRelations.filter(
+          r => r.targetId !== id
+        );
+        return copy;
+      });
+
+    if (APP.persistenceAvailable) {
+      // One transaction ensures deletion and link cleanup
+      // either complete together or fail together.
+      await new Promise((resolve, reject) => {
+        const tx = APP.db.transaction(GEM_STORE, "readwrite");
+        const store = tx.objectStore(GEM_STORE);
+
+        store.delete(id);
+        affected.forEach(g => store.put(g));
+
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
     }
-    APP.deleteId=null;closeLayer("#confirmBackdrop");
-    closeProfile();renderAll();toast("Gemstone deleted");
-  }catch(e){console.error(e);toast("Delete incomplete; review records")}
+
+    APP.gems = APP.gems.filter(g => g.id !== id);
+
+    for (const updated of affected) {
+      const original = findGem(updated.id);
+      if (original) Object.assign(original, updated);
+    }
+
+    APP.compareIds = APP.compareIds.filter(x => x !== id);
+    APP.deleteId = null;
+
+    closeLayer("#confirmBackdrop");
+    closeProfile();
+    renderAll();
+
+    showToast("Gemstone deleted");
+  } catch (error) {
+    console.error(error);
+    showToast("Deletion failed");
+  }
 }
 
 /* =========================================
-   NAVIGATION & SELECT OPTIONS
+   RELATIONSHIP INTELLIGENCE
 ========================================= */
 
-function switchView(name){
-  APP.view=name;
-  $$(".view").forEach(v=>v.classList.toggle(
-    "active",v.id===`view-${name}`));
-  $$(".main-tab").forEach(b=>b.classList.toggle(
-    "active",b.dataset.view===name));
-  if(name==="atlas")renderAtlas();
-  if(name==="statistics")renderStatistics();
-  if(name==="compare")renderComparison();
-  window.scrollTo({top:0,behavior:"smooth"});
+/*
+  Scores are collection-specific similarity
+  indices, not scientific probabilities.
+
+  Rules:
+  - Blank fields never match.
+  - Scientific identity is kept separate
+    from location/history/tradition.
+  - Weak evidence cannot replace identity.
+  - Manual relationships are explicitly labeled.
+  - Numerical properties use real distances.
+*/
+
+function overlapValues(a, b) {
+  const left = uniqueValues(asArray(a));
+  const right = new Set(asArray(b).map(norm));
+
+  return left.filter(value => right.has(norm(value)));
 }
-function gemOptions(excluded=[]){
-  return APP.gems.filter(g=>!excluded.includes(g.id))
-    .sort(nameSort).map(g=>`<option value="${esc(g.id)}">
-      ${esc(g.name)}</option>`).join("");
+
+function sameValue(a, b) {
+  return isFilled(a) && isFilled(b) &&
+    norm(a) === norm(b);
 }
-function updateSelectOptions(){
-  const names=gemOptions();
-  for(const id of ["pathFrom","pathTo"]){
-    const s=$("#"+id),old=s.value;
-    s.innerHTML=names;
-    if(APP.gems.some(g=>g.id===old))s.value=old;
+
+function midpoint(min, max) {
+  const a = numeric(min), b = numeric(max);
+
+  if (a === null && b === null) return null;
+  if (a === null) return b;
+  if (b === null) return a;
+
+  return (a + b) / 2;
+}
+
+function evidenceBetween(a, b) {
+  const evidence = [];
+
+  const add = (group, label, details, strength) => {
+    evidence.push({
+      group, label, details: String(details),
+      strength: Math.min(1, Math.max(0, strength))
+    });
+  };
+
+  // SCIENTIFIC IDENTITY
+  if (sameValue(a.family.species, b.family.species)) {
+    add("science", "Same mineral species",
+      a.family.species, 1);
+  } else if (sameValue(a.family.group, b.family.group)) {
+    add("science", "Same mineral group",
+      a.family.group, .35);
   }
-  if(APP.gems.length>1&&
-      $("#pathFrom").value===$("#pathTo").value)
-    $("#pathTo").selectedIndex=1;
-  $("#comparePick").innerHTML='<option value="">Select gemstone</option>'+
-    gemOptions(APP.compareIds);
-  const cl=$("#classFilter"),old=cl.value;
-  cl.innerHTML='<option value="">All classifications</option>'+
-    GEM_CONFIG.classifications.map(c=>`
-      <option value="${esc(c)}">${esc(c)}</option>`).join("");
-  cl.value=old;
+
+  if (sameValue(a.family.varietyOf, b.family.varietyOf)) {
+    add("science", "Shared parent mineral",
+      a.family.varietyOf, .8);
+  }
+
+  if (sameValue(a.chemical.formula, b.chemical.formula)) {
+    add("science", "Matching recorded formula",
+      a.chemical.formula, .75);
+  }
+
+  const elements = overlapValues(
+    a.chemical.traceElements,
+    b.chemical.traceElements
+  );
+
+  if (elements.length) {
+    add("science", "Shared trace elements",
+      elements.join(", "), Math.min(.55, .2 + elements.length * .1));
+  }
+
+  if (sameValue(
+    a.physical.crystalSystem,
+    b.physical.crystalSystem
+  ) && !["unknown", "not applicable"].includes(
+    norm(a.physical.crystalSystem)
+  )) {
+    add("science", "Shared crystal system",
+      a.physical.crystalSystem, .25);
+  }
+
+  const ha = midpoint(
+    a.physical.mohsMin, a.physical.mohsMax
+  );
+
+  const hb = midpoint(
+    b.physical.mohsMin, b.physical.mohsMax
+  );
+
+  if (ha !== null && hb !== null) {
+    const delta = Math.abs(ha - hb);
+
+    if (delta <= .5) {
+      add("science", "Similar hardness",
+        `${formatNumber(ha)} and ${formatNumber(hb)}`,
+        .12 + .12 * (1 - delta / .5));
+    }
+  }
+
+  const da = midpoint(
+    a.physical.densityMin, a.physical.densityMax
+  );
+
+  const db = midpoint(
+    b.physical.densityMin, b.physical.densityMax
+  );
+
+  if (da !== null && db !== null) {
+    const delta = Math.abs(da - db);
+
+    if (delta <= .2) {
+      add("science", "Similar density",
+        `${formatNumber(da)} and ${formatNumber(db)} g/cm³`,
+        .12);
+    }
+  }
+
+  if (sameValue(a.optical.luster, b.optical.luster)) {
+    add("science", "Shared luster", a.optical.luster, .12);
+  }
+
+  const sharedColors = overlapValues(
+    a.colors.map(c => c.name),
+    b.colors.map(c => c.name)
+  );
+
+  if (sharedColors.length) {
+    add("science", "Shared recorded colors",
+      sharedColors.join(", "), .12);
+  }
+
+  // GEOGRAPHIC ASSOCIATIONS
+  const countries = overlapValues(
+    a.geography.countries,
+    b.geography.countries
+  );
+
+  if (countries.length) {
+    add("geography", "Countries in common",
+      countries.join(", "),
+      Math.min(.8, .3 + .12 * countries.length));
+  }
+
+  const localities = overlapValues(
+    a.geography.localities,
+    b.geography.localities
+  );
+
+  if (localities.length) {
+    add("geography", "Shared localities",
+      localities.join(", "), .85);
+  }
+
+  // HISTORICAL ASSOCIATIONS
+  const cultures = overlapValues(
+    a.history.cultures,
+    b.history.cultures
+  );
+
+  if (cultures.length) {
+    add("history", "Shared historical cultures",
+      cultures.join(", "), .7);
+  }
+
+  // TRADITIONAL / SYMBOLIC
+  const traditions = [
+    ["associations.zodiac", "Zodiac"],
+    ["associations.planetary", "Planetary"],
+    ["associations.birthstone", "Birthstone months"],
+    ["associations.anniversary", "Anniversaries"],
+    ["symbolism.meanings", "Traditional meanings"],
+    ["symbolism.chakras", "Chakras"]
+  ];
+
+  for (const [path, label] of traditions) {
+    const values = overlapValues(
+      valueAt(a, path),
+      valueAt(b, path)
+    );
+
+    if (values.length) {
+      add("tradition", label,
+        values.join(", "), .3);
+    }
+  }
+
+  // MANUAL CONNECTIONS
+  const manual = [
+    ...a.manualRelations.filter(r => r.targetId === b.id),
+    ...b.manualRelations.filter(r => r.targetId === a.id)
+  ];
+
+  const manualSeen = new Set();
+
+  for (const relation of manual) {
+    const key = norm(relation.type) + "|" + norm(relation.note);
+
+    if (manualSeen.has(key)) continue;
+    manualSeen.add(key);
+
+    add("manual",
+      relation.type || "Manual relationship",
+      relation.note || "Explicitly linked by the user",
+      1);
+  }
+
+  // LEGACY NAME LINKS
+  const related = [
+    ...a.family.related.map(norm),
+    ...b.family.related.map(norm)
+  ];
+
+  if (related.includes(norm(a.name)) ||
+      related.includes(norm(b.name))) {
+    add("science", "Named related gemstone",
+      "Legacy related-gems field", .18);
+  }
+
+  return evidence;
+}
+
+function scoreEvidence(items, category = "all") {
+  const groups = Object.keys(APP.weights);
+  let weighted = 0;
+  let totalWeight = 0;
+
+  for (const group of groups) {
+    if (category !== "all" && category !== group) continue;
+
+    const weight = APP.weights[group];
+
+    if (weight <= 0) continue;
+
+    totalWeight += weight;
+
+    const groupEvidence = items.filter(
+      e => e.group === group
+    );
+
+    // Saturated contribution prevents numerous weak
+    // attributes from infinitely inflating a category.
+    const strength = Math.min(1,
+      groupEvidence.reduce((sum, e) => sum + e.strength, 0)
+    );
+
+    weighted += strength * weight;
+  }
+
+  return totalWeight
+    ? Math.round(weighted / totalWeight * 100)
+    : 0;
+}
+
+function relationshipPair(a, b, category = "all") {
+  const evidence = evidenceBetween(a, b).filter(e =>
+    category === "all" || e.group === category
+  );
+
+  return {
+    a, b, evidence,
+    score: scoreEvidence(evidence, category)
+  };
+}
+
+function allRelationshipPairs(category = "all", minimum = 0) {
+  const pairs = [];
+
+  for (let i = 0; i < APP.gems.length; i++) {
+    for (let j = i + 1; j < APP.gems.length; j++) {
+      const pair = relationshipPair(
+        APP.gems[i], APP.gems[j], category
+      );
+
+      if (pair.evidence.length && pair.score >= minimum) {
+        pairs.push(pair);
+      }
+    }
+  }
+
+  return pairs.sort((a, b) =>
+    b.score - a.score ||
+    a.a.name.localeCompare(b.a.name)
+  );
+}
+
+function evidenceGroupLabel(group) {
+  return GEM_CONFIG.relationshipGroups
+    .find(g => g.id === group)?.label || group;
 }
 
 /* =========================================
    FAMILY TREE
 ========================================= */
 
-function renderTree(){
-  const groups=new Map();
-  for(const gem of [...APP.gems].sort(nameSort)){
-    const group=gem.family.group||"Unclassified Materials";
-    const species=gem.family.species||
+function renderFamilyTree() {
+  const groups = new Map();
+
+  for (const gem of sortGems(APP.gems)) {
+    const group = gem.family.group ||
+      "Unclassified Materials";
+
+    const species = gem.family.species ||
       (gem.classifications.includes("Organic")
-        ?"Organic Gem Material":"Unspecified Species");
-    if(!groups.has(group))groups.set(group,new Map());
-    const speciesMap=groups.get(group);
-    if(!speciesMap.has(species))speciesMap.set(species,[]);
+        ? "Organic Material"
+        : "Species Not Recorded");
+
+    if (!groups.has(group)) groups.set(group, new Map());
+
+    const speciesMap = groups.get(group);
+
+    if (!speciesMap.has(species)) {
+      speciesMap.set(species, []);
+    }
+
     speciesMap.get(species).push(gem);
   }
-  $("#treeStage").innerHTML=[...groups]
-    .sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([group,speciesMap])=>`
+
+  $("#treeStage").innerHTML = [...groups]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([group, speciesMap]) => `
       <div class="tree-group">
-        <h3 class="tree-heading">${esc(group)}</h3>
-        ${[...speciesMap].sort((a,b)=>a[0].localeCompare(b[0]))
-          .map(([species,gems])=>`
-          <div class="tree-species">
-            <div class="tree-species-title">${esc(species)}</div>
-            <div class="tree-gems">
-              ${gems.map(g=>`<button class="tree-gem"
-                data-tree-gem="${esc(g.id)}" type="button"
-                style="${style(g)}">◇ ${esc(g.name)}</button>`).join("")}
+        <h3 class="tree-heading">${escapeHTML(group)}</h3>
+
+        ${[...speciesMap]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([species, gems]) => `
+            <div class="tree-species">
+              <div class="tree-species-title">
+                ${escapeHTML(species)}
+              </div>
+
+              <div class="tree-gems">
+                ${gems.map(g => `
+                  <button class="tree-gem"
+                    type="button"
+                    data-tree-gem="${escapeHTML(g.id)}">
+                    ◇ ${escapeHTML(g.name)}
+                  </button>
+                `).join("")}
+              </div>
             </div>
-          </div>`).join("")}
-      </div>`).join("")||
-    '<p class="section-description">No gemstone records yet.</p>';
+          `).join("")}
+      </div>
+    `).join("") ||
+    `<p class="section-description">No gemstone records.</p>`;
 }
 
 /* =========================================
-   NETWORK SVG
+   SVG NETWORK GENERATION
 ========================================= */
 
-function svgEl(tag,attrs={},parent){
-  const el=document.createElementNS(
-    "http://www.w3.org/2000/svg",tag);
-  for(const [k,v] of Object.entries(attrs))
-    el.setAttribute(k,String(v));
-  if(parent)parent.appendChild(el);
-  return el;
+function svgElement(tag, attributes = {}, parent = null) {
+  const element = document.createElementNS(
+    "http://www.w3.org/2000/svg", tag
+  );
+
+  for (const [name, value] of Object.entries(attributes)) {
+    element.setAttribute(name, String(value));
+  }
+
+  if (parent) parent.appendChild(element);
+
+  return element;
 }
-function buildNetwork(){
-  const gems=[...APP.gems].sort(nameSort);
-  const n=gems.length;
-  const nodes=gems.map((g,i)=>{
-    const angle=i*2.399963229728653;
-    const radius=Math.min(255,45+26*Math.sqrt(i));
+
+function buildNetwork() {
+  const gems = sortGems(APP.gems);
+
+  const nodes = gems.map((gem, index) => {
+    const angle = index * 2.39996323;
+    const radius = Math.min(270, 38 + Math.sqrt(index) * 30);
+
     return {
-      id:g.id,gem:g,
-      x:500+Math.cos(angle)*radius,
-      y:325+Math.sin(angle)*radius
+      id: gem.id,
+      gem,
+      x: 500 + Math.cos(angle) * radius,
+      y: 325 + Math.sin(angle) * radius
     };
   });
-  const cat=$("#atlasCategory").value;
-  const threshold=Number($("#atlasThreshold").value);
-  const edges=allPairs(cat,threshold).map(p=>({
-    from:p.a.id,to:p.b.id,info:p
-  }));
-  /*
-    Deterministic force layout:
-    cluster connected gems while repelling all nodes.
-    Limited iterations keep mobile rendering responsive.
-  */
-  for(let iter=0;iter<Math.min(105,45+n);iter++){
-    const delta=new Map(nodes.map(v=>[v.id,{x:0,y:0}]));
-    for(let i=0;i<n;i++){
-      for(let j=i+1;j<n;j++){
-        const a=nodes[i],b=nodes[j];
-        const dx=b.x-a.x,dy=b.y-a.y;
-        const d=Math.max(10,Math.hypot(dx,dy));
-        const force=Math.min(7,4200/(d*d));
-        const fx=dx/d*force,fy=dy/d*force;
-        delta.get(a.id).x-=fx;delta.get(a.id).y-=fy;
-        delta.get(b.id).x+=fx;delta.get(b.id).y+=fy;
+
+  const category = $("#atlasCategory").value;
+  const threshold = Number($("#atlasThreshold").value);
+
+  const edges = allRelationshipPairs(category, threshold)
+    .map(pair => ({
+      from: pair.a.id,
+      to: pair.b.id,
+      pair
+    }));
+
+  // Small, deterministic force layout.
+  // More iterations are intentionally avoided
+  // to keep larger collections responsive on phones.
+  if (nodes.length <= 160) {
+    const byId = new Map(nodes.map(n => [n.id, n]));
+
+    for (let iteration = 0; iteration < 75; iteration++) {
+      const forces = new Map(nodes.map(n => [
+        n.id, { x: 0, y: 0 }
+      ]));
+
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const a = nodes[i], b = nodes[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const distance = Math.max(12, Math.hypot(dx, dy));
+          const force = Math.min(6, 4200 / (distance * distance));
+
+          forces.get(a.id).x -= dx / distance * force;
+          forces.get(a.id).y -= dy / distance * force;
+          forces.get(b.id).x += dx / distance * force;
+          forces.get(b.id).y += dy / distance * force;
+        }
+      }
+
+      for (const edge of edges) {
+        const a = byId.get(edge.from);
+        const b = byId.get(edge.to);
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const desired = 95 + (100 - edge.pair.score) * 1.6;
+        const attraction = (distance - desired) * .006;
+
+        forces.get(a.id).x += dx / distance * attraction;
+        forces.get(a.id).y += dy / distance * attraction;
+        forces.get(b.id).x -= dx / distance * attraction;
+        forces.get(b.id).y -= dy / distance * attraction;
+      }
+
+      for (const node of nodes) {
+        const f = forces.get(node.id);
+
+        node.x += Math.max(-7, Math.min(7,
+          f.x + (500 - node.x) * .002));
+
+        node.y += Math.max(-7, Math.min(7,
+          f.y + (325 - node.y) * .002));
       }
     }
-    for(const edge of edges){
-      const a=nodes.find(v=>v.id===edge.from);
-      const b=nodes.find(v=>v.id===edge.to);
-      const dx=b.x-a.x,dy=b.y-a.y;
-      const d=Math.max(1,Math.hypot(dx,dy));
-      const desired=130+(100-edge.info.score)*1.15;
-      const spring=(d-desired)*.006;
-      delta.get(a.id).x+=dx/d*spring;
-      delta.get(a.id).y+=dy/d*spring;
-      delta.get(b.id).x-=dx/d*spring;
-      delta.get(b.id).y-=dy/d*spring;
-    }
-    for(const v of nodes){
-      const f=delta.get(v.id);
-      v.x+=Math.max(-6,Math.min(6,f.x+(500-v.x)*.002));
-      v.y+=Math.max(-6,Math.min(6,f.y+(325-v.y)*.002));
-    }
   }
-  APP.network.nodes=nodes;
-  APP.network.edges=edges;
+
+  APP.network.nodes = nodes;
+  APP.network.edges = edges;
 }
-function drawNetwork(){
-  const svg=$("#networkSvg");
+
+function drawNetwork() {
+  const svg = $("#networkSvg");
   svg.replaceChildren();
-  const state=APP.network;
-  const root=svgEl("g",{
-    transform:`translate(${state.x} ${state.y})
-      scale(${state.scale})`
-  },svg);
-  const positions=new Map(state.nodes.map(n=>[n.id,n]));
-  for(const edge of state.edges){
-    const a=positions.get(edge.from),b=positions.get(edge.to);
-    if(!a||!b)continue;
-    const line=svgEl("line",{
-      x1:a.x,y1:a.y,x2:b.x,y2:b.y,
-      stroke:"#b9a8e9",
-      "stroke-opacity":.16+edge.info.score/180,
-      "stroke-width":1.2+edge.info.score/30,
-      class:"graph-edge"
-    },root);
-    const hit=svgEl("line",{
-      x1:a.x,y1:a.y,x2:b.x,y2:b.y,
-      stroke:"transparent","stroke-width":18,
-      class:"graph-edge"
-    },root);
-    hit.dataset.edgeFrom=edge.from;
-    hit.dataset.edgeTo=edge.to;
-    line.dataset.edgeFrom=edge.from;
-    line.dataset.edgeTo=edge.to;
+
+  const n = APP.network;
+
+  const root = svgElement("g", {
+    transform: `translate(${n.x} ${n.y}) scale(${n.scale})`
+  }, svg);
+
+  const positions = new Map(
+    n.nodes.map(node => [node.id, node])
+  );
+
+  for (const edge of n.edges) {
+    const a = positions.get(edge.from);
+    const b = positions.get(edge.to);
+
+    if (!a || !b) continue;
+
+    svgElement("line", {
+      x1: a.x, y1: a.y,
+      x2: b.x, y2: b.y,
+      stroke: "#b3a5e9",
+      "stroke-opacity": .2 + edge.pair.score / 180,
+      "stroke-width": 1 + edge.pair.score / 30,
+      class: "graph-edge"
+    }, root);
+
+    const hit = svgElement("line", {
+      x1: a.x, y1: a.y,
+      x2: b.x, y2: b.y,
+      stroke: "transparent",
+      "stroke-width": 18,
+      class: "graph-edge"
+    }, root);
+
+    hit.dataset.edgeFrom = edge.from;
+    hit.dataset.edgeTo = edge.to;
   }
-  for(const node of state.nodes){
-    const g=node.gem;
-    const group=svgEl("g",{
-      class:"graph-node"+(
-        APP.inspector?.type==="gem"&&
-        APP.inspector.id===g.id?" selected":""),
-      transform:`translate(${node.x} ${node.y})`
-    },root);
-    group.dataset.nodeId=g.id;
-    svgEl("circle",{
-      r:17,fill:color(g),opacity:.92
-    },group);
-    svgEl("circle",{
-      r:5,fill:"#ffffff",opacity:.38
-    },group);
-    if($("#atlasLabels").checked){
-      const t=svgEl("text",{
-        class:"graph-label",x:0,y:37
-      },group);
-      t.textContent=g.name;
+
+  for (const node of n.nodes) {
+    const g = svgElement("g", {
+      class: "graph-node" + (
+        APP.inspector?.type === "gem" &&
+        APP.inspector.id === node.id
+          ? " selected" : ""
+      ),
+      transform: `translate(${node.x} ${node.y})`
+    }, root);
+
+    g.dataset.nodeId = node.id;
+
+    svgElement("circle", {
+      r: 16,
+      fill: gemColor(node.gem)
+    }, g);
+
+    svgElement("circle", {
+      r: 5,
+      fill: "#fff",
+      opacity: .35
+    }, g);
+
+    if ($("#atlasLabels").checked) {
+      const label = svgElement("text", {
+        x: 0, y: 37,
+        class: "graph-label"
+      }, g);
+
+      label.textContent = node.gem.name;
     }
   }
 }
-function renderAtlas(reset=false){
-  const tree=$("#atlasMode").value==="tree";
-  $("#networkSvg").hidden=tree;
-  $("#treeStage").hidden=!tree;
-  $("#atlasCategory").disabled=tree;
-  $("#atlasThreshold").disabled=tree;
-  $("#atlasLabels").disabled=tree;
-  $("#mapStatus").textContent=tree
-    ?"MINERALOGICAL HIERARCHY":"RELATIONSHIP CONSTELLATION";
-  if(tree)renderTree();
-  else{
-    if(reset)APP.network={...APP.network,scale:1,x:0,y:0};
-    buildNetwork();drawNetwork();
+
+function renderAtlas(reset = false) {
+  const tree = $("#atlasMode").value === "tree";
+
+  $("#networkSvg").hidden = tree;
+  $("#treeStage").hidden = !tree;
+
+  $("#atlasCategory").disabled = tree;
+  $("#atlasThreshold").disabled = tree;
+  $("#atlasLabels").disabled = tree;
+
+  $("#mapStatus").textContent = tree
+    ? "MINERAL FAMILY HIERARCHY"
+    : "RELATIONSHIP CONSTELLATION";
+
+  if (tree) {
+    renderFamilyTree();
+    $("#atlasCount").textContent =
+      APP.gems.length + " ENTRIES";
+  } else {
+    if (reset) {
+      APP.network.scale = 1;
+      APP.network.x = 0;
+      APP.network.y = 0;
+    }
+
+    buildNetwork();
+    drawNetwork();
+
+    $("#atlasCount").textContent =
+      APP.network.edges.length + " CONNECTIONS";
   }
-  $("#atlasCount").textContent=tree
-    ?`${APP.gems.length} ENTRIES`
-    :`${APP.network.edges.length} CONNECTIONS`;
+
   renderInspector();
 }
-function transformMap(scaleChange,anchorX=500,anchorY=325){
-  const st=APP.network;
-  const next=Math.max(.35,Math.min(4,st.scale*scaleChange));
-  st.x=anchorX-(anchorX-st.x)*next/st.scale;
-  st.y=anchorY-(anchorY-st.y)*next/st.scale;
-  st.scale=next;drawNetwork();
+
+function zoomNetwork(factor, anchorX = 500, anchorY = 325) {
+  const n = APP.network;
+
+  const newScale = Math.min(5,
+    Math.max(.3, n.scale * factor));
+
+  n.x = anchorX - (anchorX - n.x) *
+    newScale / n.scale;
+
+  n.y = anchorY - (anchorY - n.y) *
+    newScale / n.scale;
+
+  n.scale = newScale;
+  drawNetwork();
 }
-function screenToSVG(event){
-  const svg=$("#networkSvg");
-  const rect=svg.getBoundingClientRect();
+
+function pointerPosition(event) {
+  const rect = $("#networkSvg").getBoundingClientRect();
+
   return {
-    x:(event.clientX-rect.left)/rect.width*1000,
-    y:(event.clientY-rect.top)/rect.height*650
+    x: (event.clientX - rect.left) / rect.width * 1000,
+    y: (event.clientY - rect.top) / rect.height * 650
   };
 }
 
-/* =========================================
-   CONNECTION INSPECTOR
-========================================= */
+function renderInspector() {
+  const selection = APP.inspector;
 
-function renderInspector(){
-  const selection=APP.inspector;
-  if(!selection){
-    $("#inspectorTitle").textContent="Explore relationships";
-    $("#inspectorContent").textContent=
-      "Select a gemstone or a connection to inspect its evidence.";
+  if (!selection) {
+    $("#inspectorTitle").textContent =
+      "Explore the connections";
+    $("#inspectorContent").textContent =
+      "Select a gemstone or line to investigate its relationships.";
     return;
   }
-  if(selection.type==="gem"){
-    const g=findGem(selection.id);
-    if(!g){APP.inspector=null;renderInspector();return}
-    $("#inspectorTitle").textContent=g.name;
-    const matches=allPairs().filter(p=>
-      p.a.id===g.id||p.b.id===g.id).slice(0,15);
-    $("#inspectorContent").innerHTML=`
-      <p>${esc(g.family.species||g.family.group||
-        "Unclassified material")}</p>
-      <p>${matches.length} displayed related entries
-        (up to 15 strongest).</p>
+
+  if (selection.type === "gem") {
+    const gem = findGem(selection.id);
+
+    if (!gem) {
+      APP.inspector = null;
+      renderInspector();
+      return;
+    }
+
+    const matches = allRelationshipPairs()
+      .filter(p =>
+        p.a.id === gem.id || p.b.id === gem.id
+      )
+      .slice(0, 20);
+
+    $("#inspectorTitle").textContent = gem.name;
+
+    $("#inspectorContent").innerHTML = `
+      <p>${escapeHTML(
+        gem.family.species ||
+        gem.family.group ||
+        "Unclassified"
+      )}</p>
+
+      <p>${matches.length} listed connections.</p>
+
       <div class="inspector-list">
-        ${matches.map(p=>{
-          const other=p.a.id===g.id?p.b:p.a;
+        ${matches.map(pair => {
+          const other = pair.a.id === gem.id
+            ? pair.b : pair.a;
+
           return `<button class="inspector-button"
-            data-inspect-edge="${esc(g.id)}|${esc(other.id)}">
-            ${esc(other.name)} · ${p.score}%
+            data-inspect-edge="${escapeHTML(gem.id)}|${escapeHTML(other.id)}"
+            type="button">
+            ${escapeHTML(other.name)} · ${pair.score}%
           </button>`;
         }).join("")}
       </div>
-      <button class="primary-button" data-inspect-open="${esc(g.id)}"
-        type="button" style="margin-top:18px">
-        Open Gemstone
-      </button>`;
-  }else if(selection.type==="edge"){
-    const a=findGem(selection.a),b=findGem(selection.b);
-    if(!a||!b){APP.inspector=null;renderInspector();return}
-    const cat=$("#atlasCategory").value;
-    const info=pairInfo(a,b,cat);
-    $("#inspectorTitle").textContent=`${a.name} ↔ ${b.name}`;
-    $("#inspectorContent").innerHTML=`
+
+      <button class="primary-button"
+        data-inspect-open="${escapeHTML(gem.id)}"
+        type="button"
+        style="margin-top:17px">
+        Open Profile
+      </button>
+    `;
+
+  } else if (selection.type === "edge") {
+    const a = findGem(selection.a);
+    const b = findGem(selection.b);
+
+    if (!a || !b) {
+      APP.inspector = null;
+      renderInspector();
+      return;
+    }
+
+    const info = relationshipPair(
+      a, b, $("#atlasCategory").value
+    );
+
+    $("#inspectorTitle").textContent =
+      `${a.name} ↔ ${b.name}`;
+
+    $("#inspectorContent").innerHTML = `
       <div class="evidence-score">${info.score}%</div>
-      <p>Weighted similarity for the selected categories.</p>
-      ${info.items.map(e=>`
+      <p>Weighted catalog similarity.</p>
+
+      ${info.evidence.map(e => `
         <div class="inspector-item">
           <span class="evidence-label">
-            ${esc(descriptionOfEvidence(e))}</span>
-          <div class="evidence-value"><strong>${esc(e.label)}</strong>
-            <div>${esc(e.value)}</div>
+            ${escapeHTML(evidenceGroupLabel(e.group))}
+          </span>
+
+          <div class="evidence-value">
+            <strong>${escapeHTML(e.label)}</strong>
+            <div>${escapeHTML(e.details)}</div>
           </div>
-        </div>`).join("")}
-      <p class="field-hint">These observations come from
-        recorded fields, not external scientific verification.</p>`;
+        </div>
+      `).join("")}
+
+      <p class="field-hint">
+        A connection indicates recorded evidence.
+        Only mineralogical evidence describes
+        scientific family relationships.
+      </p>
+    `;
   }
 }
 
 /* =========================================
-   PATHFINDER — BREADTH FIRST SEARCH
+   PATHFINDING
+   SHORTEST NUMBER OF RELATIONSHIP STEPS
 ========================================= */
 
-function findConnectionPath(from,to){
-  if(from===to)return [];
-  const pairs=allPairs($("#atlasCategory").value,
-    Number($("#atlasThreshold").value));
-  const adjacency=new Map(APP.gems.map(g=>[g.id,[]]));
-  for(const p of pairs){
-    adjacency.get(p.a.id)?.push({id:p.b.id,info:p});
-    adjacency.get(p.b.id)?.push({id:p.a.id,info:p});
+function findConnectionPath(from, to) {
+  if (from === to) return [];
+
+  const pairs = allRelationshipPairs(
+    $("#atlasCategory").value,
+    Number($("#atlasThreshold").value)
+  );
+
+  const adjacency = new Map(
+    APP.gems.map(g => [g.id, []])
+  );
+
+  for (const pair of pairs) {
+    adjacency.get(pair.a.id)?.push({
+      id: pair.b.id, pair
+    });
+
+    adjacency.get(pair.b.id)?.push({
+      id: pair.a.id, pair
+    });
   }
-  const queue=[from],seen=new Set([from]),prev=new Map();
-  for(let head=0;head<queue.length;head++){
-    const current=queue[head];
-    if(current===to)break;
-    for(const edge of adjacency.get(current)||[]){
-      if(seen.has(edge.id))continue;
+
+  const queue = [from];
+  const seen = new Set([from]);
+  const previous = new Map();
+
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index];
+
+    if (current === to) break;
+
+    for (const edge of adjacency.get(current) || []) {
+      if (seen.has(edge.id)) continue;
+
       seen.add(edge.id);
-      prev.set(edge.id,{from:current,info:edge.info});
+      previous.set(edge.id, {
+        from: current,
+        pair: edge.pair
+      });
+
       queue.push(edge.id);
     }
   }
-  if(!seen.has(to))return null;
-  const path=[];
-  let cur=to;
-  while(cur!==from){
-    const step=prev.get(cur);
+
+  if (!seen.has(to)) return null;
+
+  const path = [];
+  let current = to;
+
+  while (current !== from) {
+    const step = previous.get(current);
+
     path.unshift({
-      from:step.from,to:cur,info:step.info
+      from: step.from,
+      to: current,
+      pair: step.pair
     });
-    cur=step.from;
+
+    current = step.from;
   }
+
   return path;
 }
-function renderPath(){
-  const a=$("#pathFrom").value,b=$("#pathTo").value;
-  if(!a||!b){
-    $("#pathResult").textContent="Add at least two gemstones.";
+
+function renderPathResult() {
+  const from = $("#pathFrom").value;
+  const to = $("#pathTo").value;
+
+  if (!from || !to) {
+    $("#pathResult").textContent =
+      "Choose two gemstones.";
     return;
   }
-  if(a===b){
-    $("#pathResult").textContent="Choose different gemstones.";
+
+  if (from === to) {
+    $("#pathResult").textContent =
+      "Choose two different gemstones.";
     return;
   }
-  const path=findConnectionPath(a,b);
-  if(path===null){
-    $("#pathResult").textContent=
-      "No route found under the current relationship filters.";
+
+  const path = findConnectionPath(from, to);
+
+  if (path === null) {
+    $("#pathResult").textContent =
+      "No evidenced path exists with these filters.";
     return;
   }
-  $("#pathResult").innerHTML=path.map((step,i)=>{
-    const from=findGem(step.from),to=findGem(step.to);
-    const examples=step.info.items.slice(0,3).map(e=>
-      `${e.label}: ${e.value}`).join(" · ");
+
+  $("#pathResult").innerHTML = path.map((step, index) => {
+    const a = findGem(step.from);
+    const b = findGem(step.to);
+
     return `<div class="path-step">
-      <strong>${i+1}. ${esc(from.name)} → ${esc(to.name)}</strong>
-      <small>${esc(examples)}</small>
+      <strong>${index + 1}.
+        ${escapeHTML(a.name)} → ${escapeHTML(b.name)}
+      </strong>
+
+      <small>
+        ${escapeHTML(
+          step.pair.evidence.slice(0, 4).map(e =>
+            e.label + ": " + e.details
+          ).join(" · ")
+        )}
+      </small>
     </div>`;
   }).join("");
 }
 
 /* =========================================
-   STATISTICS ENGINE
+   STATISTICS — DATA ACCESS
 ========================================= */
 
-function dimensionValues(g,id){
-  if(id==="colors")return g.colors.map(c=>c.name);
-  if(id==="colorRarity")return g.colors.map(c=>c.rarity);
-  const value=get(g,id);
-  return list(value).filter(x=>x!=="Unknown"&&x!=="Not applicable")
-    .map(String);
+function getDimension(id) {
+  return GEM_CONFIG.dimensions.find(d => d.id === id);
 }
-function dimensionLabel(id){
-  return GEM_CONFIG.dimensions.find(d=>d.id===id)?.label||id;
+
+function dimensionLabel(id) {
+  return getDimension(id)?.label || id;
 }
-function countDimension(id,metric="gems"){
-  const map=new Map();
-  for(const gem of APP.gems){
-    const values=dimensionValues(gem,id);
-    const items=metric==="occurrences"?values:unique(values);
-    for(const value of items){
-      const key=clean(value);
-      if(!key)continue;
-      if(!map.has(key))map.set(key,{name:value,count:0});
-      map.get(key).count++;
+
+function isNumericDimension(id) {
+  const d = getDimension(id);
+  return d && ["range", "number"].includes(d.type);
+}
+
+function numericDimensionValue(gem, id, mode = "midpoint") {
+  const dimension = getDimension(id);
+  if (!dimension) return null;
+
+  if (dimension.type === "number") {
+    return numeric(valueAt(gem, dimension.path));
+  }
+
+  if (dimension.type !== "range") return null;
+
+  const a = numeric(valueAt(gem, dimension.minPath));
+  const b = numeric(valueAt(gem, dimension.maxPath));
+
+  if (mode === "minimum") return a ?? b;
+  if (mode === "maximum") return b ?? a;
+
+  return midpoint(a, b);
+}
+
+function rawDimensionValues(gem, id) {
+  const dimension = getDimension(id);
+  if (!dimension) return [];
+
+  if (dimension.type === "colors") {
+    return gem.colors.map(c => c.name).filter(isFilled);
+  }
+
+  if (dimension.type === "colorRarity") {
+    return gem.colors.map(c => c.rarity).filter(isFilled);
+  }
+
+  if (["range", "number"].includes(dimension.type)) {
+    const n = numericDimensionValue(
+      gem, id, $("#statNumericMode").value
+    );
+
+    return n === null ? [] : [String(n)];
+  }
+
+  return asArray(valueAt(gem, dimension.path))
+    .map(String)
+    .filter(value => {
+      const key = norm(value);
+      return key && key !== "unknown" &&
+        key !== "not applicable";
+    });
+}
+
+function statisticsPopulation() {
+  const scope = $("#statScope").value;
+  const rarity = $("#statRarityFilter").value;
+
+  return APP.gems.filter(g => {
+    if (scope === "favorites" && !g.favorite) return false;
+    if (scope === "natural" && g.originType !== "Natural")
+      return false;
+    if (scope === "synthetic" && g.originType !== "Synthetic")
+      return false;
+    if (rarity && g.rarity !== rarity) return false;
+
+    return true;
+  });
+}
+
+function aggregateDimension(population, id, measure) {
+  const buckets = new Map();
+
+  for (const gem of population) {
+    const raw = rawDimensionValues(gem, id);
+    const values = measure === "occurrences"
+      ? raw
+      : uniqueValues(raw);
+
+    if (!values.length && $("#statMissing").value === "show") {
+      values.push("Not Recorded");
+    }
+
+    for (const value of values) {
+      const key = norm(value);
+
+      if (!buckets.has(key)) {
+        buckets.set(key, {
+          name: value,
+          count: 0,
+          gemIds: new Set()
+        });
+      }
+
+      const item = buckets.get(key);
+      item.count++;
+      item.gemIds.add(gem.id);
     }
   }
-  return [...map.values()].sort((a,b)=>
-    b.count-a.count||a.name.localeCompare(b.name));
+
+  const result = [...buckets.values()].map(row => ({
+    name: row.name,
+    count: row.count,
+    uniqueCount: row.gemIds.size,
+    gemIds: [...row.gemIds]
+  }));
+
+  const order = $("#statSort").value;
+
+  result.sort((a, b) => {
+    if (order === "ascending")
+      return a.count - b.count ||
+        a.name.localeCompare(b.name);
+
+    if (order === "alphabetical")
+      return a.name.localeCompare(b.name);
+
+    return b.count - a.count ||
+      a.name.localeCompare(b.name);
+  });
+
+  const limit = Number($("#statTopN").value);
+
+  return limit ? result.slice(0, limit) : result;
 }
-function displayStatValue(row,metric){
-  if(metric==="percent"){
-    return APP.gems.length
-      ?(row.count/APP.gems.length*100).toFixed(1)+"%":"0%";
+
+function percent(value, populationSize) {
+  return populationSize
+    ? value / populationSize * 100
+    : 0;
+}
+
+function statDisplay(row, measure, total) {
+  if (measure === "percentage") {
+    return formatNumber(percent(row.uniqueCount, total), 1) + "%";
   }
-  return String(row.count);
+
+  return String(
+    measure === "occurrences" ? row.count : row.uniqueCount
+  );
 }
-function donutSVG(rows){
-  const palette=[
-    "#b4a2e9","#6d92c8","#d1a6bd","#8fc8be",
-    "#c9bc85","#9381bc","#c77e9c","#809ba2"
-  ];
-  const total=rows.reduce((s,r)=>s+r.count,0)||1;
-  let offset=0;
-  const circles=rows.slice(0,8).map((r,i)=>{
-    const len=r.count/total*100;
-    const html=`<circle cx="110" cy="110" r="75"
-      fill="none" stroke="${palette[i]}" stroke-width="30"
-      stroke-dasharray="${len} ${100-len}"
-      stroke-dashoffset="${-offset}"
-      pathLength="100"
-      transform="rotate(-90 110 110)"/>`;
-    offset+=len;return html;
+
+/* =========================================
+   STATISTICS CHARTS
+========================================= */
+
+function rankedBarChart(rows, measure, total) {
+  const max = Math.max(1, ...rows.map(r =>
+    measure === "occurrences" ? r.count : r.uniqueCount
+  ));
+
+  return rows.map(row => {
+    const value = measure === "occurrences"
+      ? row.count : row.uniqueCount;
+
+    return `<div class="ranked-row">
+      <span class="ranked-name">${escapeHTML(row.name)}</span>
+
+      <div class="ranked-track">
+        <div class="ranked-fill"
+          style="width:${value / max * 100}%"></div>
+      </div>
+
+      <span class="ranked-value">
+        ${statDisplay(row, measure, total)}
+      </span>
+    </div>`;
   }).join("");
+}
+
+function donutChart(rows, measure, totalGems) {
+  const values = rows.map(r =>
+    measure === "occurrences" ? r.count : r.uniqueCount
+  );
+
+  const sum = values.reduce((a, b) => a + b, 0);
+
+  if (!sum) return "<p>No values recorded.</p>";
+
+  let offset = 0;
+
+  const circles = rows.map((row, index) => {
+    const length = values[index] / sum * 100;
+
+    const part = `<circle
+      cx="110" cy="110" r="75"
+      fill="none"
+      stroke="${PALETTE[index % PALETTE.length]}"
+      stroke-width="30"
+      pathLength="100"
+      stroke-dasharray="${length} ${100 - length}"
+      stroke-dashoffset="${-offset}"
+      transform="rotate(-90 110 110)">
+    </circle>`;
+
+    offset += length;
+    return part;
+  }).join("");
+
   return `<div class="donut-wrap">
     <svg class="donut-chart" viewBox="0 0 220 220">
       <circle cx="110" cy="110" r="75"
         fill="none" stroke="#252a3e" stroke-width="30"/>
+
       ${circles}
-      <text x="110" y="110" fill="#e9eaf1" text-anchor="middle"
-        dominant-baseline="middle" font-size="22">${total}</text>
+
+      <text x="110" y="108" text-anchor="middle"
+        fill="#ebe9f5" font-size="22">
+        ${sum}
+      </text>
+
+      <text x="110" y="127" text-anchor="middle"
+        fill="#9199ac" font-size="10">
+        assignments
+      </text>
     </svg>
+
     <div class="donut-legend">
-      ${rows.slice(0,8).map((r,i)=>`
+      ${rows.map((row, index) => `
         <div class="legend-line">
           <span class="legend-dot"
-            style="background:${palette[i]}"></span>
-          ${esc(r.name)} · ${r.count}
-        </div>`).join("")}
+            style="background:${PALETTE[index % PALETTE.length]}">
+          </span>
+
+          ${escapeHTML(row.name)} ·
+          ${statDisplay(row, measure, totalGems)}
+        </div>
+      `).join("")}
     </div>
   </div>`;
 }
-function barChart(rows,metric){
-  const max=Math.max(1,...rows.map(r=>r.count));
-  return rows.slice(0,35).map(r=>`
-    <div class="ranked-row">
-      <div class="ranked-name">${esc(r.name)}</div>
-      <div class="ranked-track">
-        <div class="ranked-fill"
-          style="width:${r.count/max*100}%"></div>
-      </div>
-      <span class="ranked-value">${displayStatValue(r,metric)}</span>
-    </div>`).join("");
+
+function treemapChart(rows, measure, total) {
+  const values = rows.map(r =>
+    measure === "occurrences" ? r.count : r.uniqueCount
+  );
+
+  const sum = values.reduce((s, v) => s + v, 0) || 1;
+
+  return `<div class="treemap">
+    ${rows.map((row, i) => {
+      const value = values[i];
+      const share = value / sum;
+
+      return `<div class="treemap-tile"
+        style="
+          --tile-weight:${Math.max(1, value)};
+          --tile-basis:${Math.max(15, share * 100)}%;
+          background:${PALETTE[i % PALETTE.length]};
+        ">
+        <strong>${escapeHTML(row.name)}</strong>
+        <small>${statDisplay(row, measure, total)}</small>
+      </div>`;
+    }).join("")}
+  </div>`;
 }
-function overlapMatrix(aId,bId){
-  const xs=countDimension(aId).slice(0,12);
-  const ys=countDimension(bId).slice(0,12);
-  const matrix=ys.map(y=>xs.map(x=>
-    APP.gems.filter(g=>{
-      const a=dimensionValues(g,aId).map(clean);
-      const b=dimensionValues(g,bId).map(clean);
-      return a.includes(clean(x.name))&&b.includes(clean(y.name));
-    }).length));
-  return {xs,ys,matrix};
+
+function matrixData(population, firstId, secondId) {
+  const first = aggregateDimension(
+    population, firstId, "gems"
+  ).slice(0, 12);
+
+  const second = aggregateDimension(
+    population, secondId, "gems"
+  ).slice(0, 12);
+
+  const cells = second.map(y => first.map(x => {
+    const a = new Set(x.gemIds);
+    return y.gemIds.filter(id => a.has(id)).length;
+  }));
+
+  return { first, second, cells };
 }
-function heatmapChart(data){
-  const max=Math.max(1,...data.matrix.flat());
-  return `<div class="heatmap-grid"><table class="heatmap-table">
-    <thead><tr><th></th>${data.xs.map(x=>
-      `<th>${esc(x.name)}</th>`).join("")}</tr></thead>
-    <tbody>${data.ys.map((y,i)=>`
-      <tr><th>${esc(y.name)}</th>
-        ${data.matrix[i].map(n=>`<td
-          style="background:rgba(173,151,231,${.06+n/max*.8})">
-          ${n}</td>`).join("")}</tr>`).join("")}</tbody>
-  </table></div>`;
+
+function heatmapChart(data) {
+  const max = Math.max(1, ...data.cells.flat());
+
+  return `<div class="heatmap-grid">
+    <table class="heatmap-table">
+      <thead>
+        <tr>
+          <th></th>
+          ${data.first.map(row =>
+            `<th>${escapeHTML(row.name)}</th>`
+          ).join("")}
+        </tr>
+      </thead>
+
+      <tbody>
+        ${data.second.map((row, i) => `
+          <tr>
+            <th>${escapeHTML(row.name)}</th>
+
+            ${data.cells[i].map(value => `
+              <td style="background:rgba(179,165,233,${
+                .055 + value / max * .75
+              })">
+                ${value}
+              </td>
+            `).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  </div>`;
 }
-function scatterChart(xId,yId){
-  const valid=APP.gems.map(g=>({
-    gem:g,x:num(get(g,xId)),y:num(get(g,yId))
-  })).filter(p=>p.x!==null&&p.y!==null);
-  if(!valid.length)return {
-    html:"<p class='section-description'>No complete numeric pairs.</p>",
-    valid
-  };
-  const minX=Math.min(...valid.map(p=>p.x));
-  const maxX=Math.max(...valid.map(p=>p.x));
-  const minY=Math.min(...valid.map(p=>p.y));
-  const maxY=Math.max(...valid.map(p=>p.y));
-  const scale=(v,min,max,start,length)=>
-    start+(max===min?.5:(v-min)/(max-min))*length;
-  const points=valid.map(p=>{
-    const x=scale(p.x,minX,maxX,65,500);
-    const y=360-scale(p.y,minY,maxY,0,290);
-    return `<circle cx="${x}" cy="${y}" r="7"
-      fill="${color(p.gem)}" stroke="#eee" stroke-width="1">
-      <title>${esc(p.gem.name)}: ${p.x}, ${p.y}</title></circle>`;
-  }).join("");
-  const html=`<svg class="chart-svg" viewBox="0 0 630 430">
-    <line x1="65" y1="70" x2="65" y2="360"
-      stroke="#62697f"/>
-    <line x1="65" y1="360" x2="565" y2="360"
-      stroke="#62697f"/>
-    ${[0,.25,.5,.75,1].map(t=>`
-      <line x1="65" y1="${360-t*290}"
-        x2="565" y2="${360-t*290}"
-        stroke="#ffffff" stroke-opacity=".07"/>
-      <text x="55" y="${364-t*290}" text-anchor="end">
-        ${(minY+(maxY-minY)*t).toFixed(2)}</text>
-      <text x="${65+t*500}" y="382" text-anchor="middle">
-        ${(minX+(maxX-minX)*t).toFixed(2)}</text>`).join("")}
-    ${points}
-    <text x="310" y="414" text-anchor="middle">
-      ${esc(dimensionLabel(xId))}</text>
+
+function scatterChart(population, xId, yId) {
+  const mode = $("#statNumericMode").value;
+
+  const points = population.map(g => ({
+    gem: g,
+    x: numericDimensionValue(g, xId, mode),
+    y: numericDimensionValue(g, yId, mode)
+  })).filter(p =>
+    p.x !== null && p.y !== null
+  );
+
+  if (!points.length) {
+    return {
+      html: "<p class='section-description'>No complete numerical pairs.</p>",
+      points
+    };
+  }
+
+  const minX = Math.min(...points.map(p => p.x));
+  const maxX = Math.max(...points.map(p => p.x));
+
+  const minY = Math.min(...points.map(p => p.y));
+  const maxY = Math.max(...points.map(p => p.y));
+
+  const sx = value => 65 +
+    (maxX === minX ? .5 :
+      (value - minX) / (maxX - minX)) * 500;
+
+  const sy = value => 355 -
+    (maxY === minY ? .5 :
+      (value - minY) / (maxY - minY)) * 285;
+
+  const grid = [0, .25, .5, .75, 1].map(t => `
+    <line class="chart-gridline"
+      x1="65" x2="565"
+      y1="${355 - t * 285}" y2="${355 - t * 285}"/>
+
+    <text x="56" y="${359 - t * 285}"
+      text-anchor="end">
+      ${formatNumber(minY + (maxY - minY) * t)}
+    </text>
+
+    <text x="${65 + t * 500}" y="377"
+      text-anchor="middle">
+      ${formatNumber(minX + (maxX - minX) * t)}
+    </text>
+  `).join("");
+
+  const html = `<svg class="chart-svg" viewBox="0 0 630 420">
+    <line class="chart-axis"
+      x1="65" x2="65" y1="70" y2="355"/>
+    <line class="chart-axis"
+      x1="65" x2="565" y1="355" y2="355"/>
+
+    ${grid}
+
+    ${points.map(p => `
+      <circle class="chart-point"
+        cx="${sx(p.x)}" cy="${sy(p.y)}"
+        r="7" fill="${gemColor(p.gem)}">
+        <title>${escapeHTML(
+          `${p.gem.name}: ${p.x}, ${p.y}`
+        )}</title>
+      </circle>
+    `).join("")}
+
+    <text x="315" y="410" text-anchor="middle">
+      ${escapeHTML(dimensionLabel(xId))}
+    </text>
   </svg>`;
-  return {html,valid};
-}
-function renderStatistics(){
-  const id=$("#statDimension").value;
-  const second=$("#statSecond").value;
-  const chart=$("#statChart").value;
-  const metric=$("#statMetric").value;
-  const rows=countDimension(id,metric);
-  $("#chartTitle").textContent=dimensionLabel(id);
-  $("#chartTotal").textContent=`${APP.gems.length} gemstones`;
-  let html="",insights=[],tableRows=rows;
 
-  if(chart==="bar"){
-    html=barChart(rows,metric);
-  }else if(chart==="donut"){
-    html=donutSVG(rows);
-  }else if(chart==="heatmap"){
-    const data=overlapMatrix(id,second);
-    html=heatmapChart(data);
-    const flat=data.matrix.flat();
-    insights.push(`Largest cell: ${Math.max(0,...flat)} gemstones.`);
-  }else{
-    const data=scatterChart(id,second);
-    html=data.html;
-    tableRows=data.valid.map(p=>({
-      name:p.gem.name,count:p.x,second:p.y
-    }));
-    insights.push(`${data.valid.length} gemstones have both numeric values.`);
-  }
-  $("#chartCanvas").innerHTML=html||
-    "<p class='section-description'>No recorded values yet.</p>";
-  if(rows.length){
-    insights.unshift(`Most represented: ${rows[0].name} (${rows[0].count}).`);
-    insights.push(`${rows.length} distinct recorded categories.`);
-  }
-  if(metric==="percent"&&chart!=="scatter"){
-    insights.push("Percentages use all catalog gemstones as the denominator. Multi-valued categories can total more than 100%.");
-  }
-  if(metric==="occurrences"){
-    insights.push("Occurrences count repeated recorded values, including repeated array entries.");
-  }
-  $("#statInsights").innerHTML=insights.map(x=>`
-    <div class="insight-item">${esc(x)}</div>`).join("")||
-    "<p class='section-description'>Add data to generate observations.</p>";
-
-  $("#statTable").innerHTML=`<table class="data-table">
-    <thead><tr><th>${chart==="scatter"?"Gemstone":"Category"}</th>
-      <th>${chart==="scatter"?esc(dimensionLabel(id)):"Count"}</th>
-      ${chart==="scatter"?`<th>${esc(dimensionLabel(second))}</th>`:""}
-    </tr></thead>
-    <tbody>${tableRows.slice(0,100).map(r=>`
-      <tr><td>${esc(r.name)}</td>
-      <td>${chart==="scatter"?esc(r.count):
-        esc(displayStatValue(r,metric))}</td>
-      ${chart==="scatter"?`<td>${esc(r.second)}</td>`:""}
-      </tr>`).join("")}</tbody>
-  </table>`;
+  return { html, points };
 }
-function updateStatControls(){
-  const a=$("#statDimension"),b=$("#statSecond");
-  const oldA=a.value||"rarity";
-  const oldB=b.value||"family.group";
-  const chart=$("#statChart").value;
-  const options=chart==="scatter"
-    ?GEM_CONFIG.dimensions.filter(d=>
-      GEM_CONFIG.numericDimensions.includes(d.id))
-    :GEM_CONFIG.dimensions;
-  a.innerHTML=options.map(d=>
-    `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join("");
-  b.innerHTML=options.map(d=>
-    `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join("");
-  a.value=options.some(d=>d.id===oldA)?oldA:options[0].id;
-  b.value=options.some(d=>d.id===oldB)?oldB:
-    (options[1]?.id||options[0].id);
-  b.disabled=!["heatmap","scatter"].includes(chart);
-  $("#statMetric").disabled=chart==="scatter";
+
+function histogramChart(population, dimensionId) {
+  const mode = $("#statNumericMode").value;
+  const requestedBins = Number($("#statBins").value);
+
+  const values = population.map(g => ({
+    gem: g,
+    value: numericDimensionValue(g, dimensionId, mode)
+  })).filter(p => p.value !== null);
+
+  if (!values.length) {
+    return {
+      html: "<p class='section-description'>No numerical measurements recorded.</p>",
+      bins: []
+    };
+  }
+
+  const minimum = Math.min(...values.map(p => p.value));
+  const maximum = Math.max(...values.map(p => p.value));
+
+  const binCount = minimum === maximum ? 1 : requestedBins;
+  const width = binCount === 1 ? 1 :
+    (maximum - minimum) / binCount;
+
+  const bins = Array.from({ length: binCount }, (_, index) => {
+    const start = minimum + index * width;
+    const end = index === binCount - 1
+      ? maximum : minimum + (index + 1) * width;
+
+    return {
+      name: binCount === 1
+        ? formatNumber(minimum)
+        : `${formatNumber(start)}–${formatNumber(end)}`,
+      start, end, count: 0,
+      gemIds: []
+    };
+  });
+
+  for (const p of values) {
+    const index = binCount === 1 ? 0 :
+      Math.min(binCount - 1,
+        Math.floor((p.value - minimum) / width));
+
+    bins[index].count++;
+    bins[index].gemIds.push(p.gem.id);
+  }
+
+  const maxCount = Math.max(1, ...bins.map(b => b.count));
+
+  const html = `<svg class="chart-svg"
+    viewBox="0 0 630 410">
+
+    <line class="chart-axis"
+      x1="45" y1="355" x2="605" y2="355"/>
+
+    ${bins.map((bin, index) => {
+      const barWidth = 540 / bins.length - 4;
+      const x = 52 + index * (540 / bins.length);
+      const h = bin.count / maxCount * 260;
+
+      return `<rect
+        x="${x}" y="${355 - h}"
+        width="${Math.max(4, barWidth)}"
+        height="${h}"
+        rx="3"
+        fill="${PALETTE[index % PALETTE.length]}">
+        <title>${escapeHTML(bin.name)}:
+          ${bin.count} gemstones</title>
+      </rect>`;
+    }).join("")}
+
+    <text x="315" y="399" text-anchor="middle">
+      ${escapeHTML(dimensionLabel(dimensionId))}
+    </text>
+  </svg>`;
+
+  return { html, bins };
+}
+
+function stackedChart(population, firstId, secondId) {
+  const data = matrixData(population, firstId, secondId);
+
+  const rows = data.first.map((row, index) => ({
+    row,
+    segments: data.second.map((second, secondIndex) => ({
+      name: second.name,
+      count: data.cells[secondIndex][index]
+    }))
+  }));
+
+  // Each stack shows a count of paired category
+  // assignments. Multi-valued dimensions may
+  // repeat a gemstone across separate segments.
+  const maxTotal = Math.max(1, ...rows.map(r =>
+    r.segments.reduce((s, v) => s + v.count, 0)
+  ));
+
+  return `<div class="stacked-chart">
+    ${rows.map(item => {
+      const total = item.segments.reduce(
+        (s, v) => s + v.count, 0
+      );
+
+      return `<div class="stacked-row">
+        <div class="stacked-row-title">
+          <span>${escapeHTML(item.row.name)}</span>
+          <span>${total} intersections</span>
+        </div>
+
+        <div class="stacked-track"
+          style="width:${Math.max(5, total / maxTotal * 100)}%">
+
+          ${item.segments.map((segment, i) => `
+            <div class="stacked-segment"
+              style="
+                width:${total ? segment.count / total * 100 : 0}%;
+                background:${PALETTE[i % PALETTE.length]};
+              "
+              title="${escapeHTML(segment.name)}:
+                ${segment.count}">
+            </div>
+          `).join("")}
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+/* =========================================
+   STATISTICS CONFIGURATION
+========================================= */
+
+function optionHTML(dimensions) {
+  return dimensions.map(d =>
+    `<option value="${escapeHTML(d.id)}">
+      ${escapeHTML(d.label)}
+    </option>`
+  ).join("");
+}
+
+function updateStatisticsControls() {
+  const chart = $("#statChart").value;
+
+  const primary = $("#statDimension");
+  const secondary = $("#statSecond");
+
+  const oldPrimary = primary.value || "rarity";
+  const oldSecondary = secondary.value ||
+    "family.group";
+
+  const numericOnly = chart === "scatter" ||
+    chart === "histogram";
+
+  const choices = GEM_CONFIG.dimensions.filter(d =>
+    !numericOnly || ["range", "number"].includes(d.type)
+  );
+
+  primary.innerHTML = optionHTML(choices);
+  secondary.innerHTML = optionHTML(choices);
+
+  primary.value = choices.some(d => d.id === oldPrimary)
+    ? oldPrimary : choices[0]?.id || "";
+
+  secondary.value = choices.some(d => d.id === oldSecondary)
+    ? oldSecondary : choices[1]?.id || choices[0]?.id || "";
+
+  secondary.disabled = ![
+    "heatmap", "stacked", "scatter"
+  ].includes(chart);
+
+  $("#statBins").disabled = chart !== "histogram";
+  $("#statMeasure").disabled = numericOnly;
+
   renderStatistics();
 }
 
 /* =========================================
-   COMPARISON LAB
+   STATISTICS MAIN RENDER
 ========================================= */
 
-const compareFields=[
-  ["Rarity","rarity"],
-  ["Origin Type","originType"],
-  ["Classification","classifications"],
-  ["Mineral Group","family.group"],
-  ["Mineral Species","family.species"],
-  ["Parent Mineral","family.varietyOf"],
-  ["Formula","chemical.formula"],
-  ["Trace Elements","chemical.traceElements"],
-  ["Mohs Minimum","physical.mohsMin"],
-  ["Mohs Maximum","physical.mohsMax"],
-  ["Crystal System","physical.crystalSystem"],
-  ["Density Minimum","physical.densityMin"],
-  ["Density Maximum","physical.densityMax"],
-  ["Cleavage","physical.cleavage"],
-  ["Fracture","physical.fracture"],
-  ["Streak","physical.streak"],
-  ["Luster","optical.luster"],
-  ["Transparency","optical.transparency"],
-  ["Refractive Index","optical.refractiveIndex"],
-  ["Luminescence","optical.luminescence"],
-  ["Pleochroism","optical.pleochroism"],
-  ["Dispersion","optical.dispersion"],
-  ["Colors","colors"],
-  ["Countries","geography.countries"],
-  ["Localities","geography.localities"],
-  ["Historical Cultures","history.cultures"],
-  ["Zodiac","associations.zodiac"],
-  ["Planetary Stones","associations.planetary"],
-  ["Birthstone","associations.birthstone"],
-  ["Anniversaries","associations.anniversary"],
-  ["Chakras","symbolism.chakras"],
-  ["Meanings","symbolism.meanings"],
-  ["Currency","market.currency"],
-  ["Minimum Price","market.minPrice"],
-  ["Maximum Price","market.maxPrice"]
-];
-function compareValue(g,path){
-  if(path==="colors")return g.colors.map(c=>
-    `${c.name} (${c.rarity||"Unspecified"})`).join(", ");
-  return arrayText(get(g,path));
+function renderStatistics() {
+  const population = statisticsPopulation();
+  APP.statPopulation = population;
+
+  const id = $("#statDimension").value;
+  const secondary = $("#statSecond").value;
+  const measure = $("#statMeasure").value;
+  const chart = $("#statChart").value;
+
+  $("#statPopulation").textContent =
+    `${population.length} gemstones in analysis`;
+
+  $("#chartTitle").textContent = dimensionLabel(id);
+  $("#chartTotal").textContent =
+    `${population.length} records`;
+
+  const rows = aggregateDimension(
+    population, id, measure
+  );
+
+  APP.statisticsRows = rows;
+
+  let html = "";
+  let tableRows = [];
+  let insights = [];
+  let footer = "";
+
+  if (chart === "bar") {
+    html = rankedBarChart(rows, measure, population.length);
+  }
+
+  if (chart === "donut") {
+    html = donutChart(rows, measure, population.length);
+    footer = "Donut slices represent recorded category assignments. With multi-valued properties, one gemstone can contribute to several slices.";
+  }
+
+  if (chart === "treemap") {
+    html = treemapChart(rows, measure, population.length);
+    footer = "Tile proportions are approximate in the responsive layout; the listed values are the precise counts.";
+  }
+
+  if (chart === "heatmap") {
+    const data = matrixData(population, id, secondary);
+    html = heatmapChart(data);
+    footer = "Each cell counts distinct gemstones matching both categories.";
+  }
+
+  if (chart === "stacked") {
+    html = stackedChart(population, id, secondary);
+    footer = "Stacked segments count category intersections. A gemstone can contribute to multiple segments when the secondary variable has multiple values.";
+  }
+
+  if (chart === "scatter") {
+    const result = scatterChart(
+      population, id, secondary
+    );
+
+    html = result.html;
+
+    tableRows = result.points.map(p => [
+      p.gem.name, p.x, p.y
+    ]);
+
+    insights.push(
+      `${result.points.length} gemstones contain both numerical measurements.`
+    );
+
+    footer = "Each point represents one gemstone. Missing measurements are excluded.";
+  }
+
+  if (chart === "histogram") {
+    const result = histogramChart(population, id);
+    html = result.html;
+
+    tableRows = result.bins.map(b => [
+      b.name, b.count
+    ]);
+
+    footer = "Ranges are grouped into equal-width numeric intervals. A value on the final boundary is included in the final bin.";
+  }
+
+  if (!html.trim()) {
+    html = `<p class="section-description">
+      No recorded values for this selection.
+    </p>`;
+  }
+
+  $("#chartCanvas").innerHTML = html;
+
+  const largest = [...rows].sort((a, b) =>
+    b.count - a.count
+  )[0];
+
+  if (largest) {
+    insights.unshift(
+      `Largest category: ${largest.name} (${largest.count} assignments).`
+    );
+
+    insights.push(
+      `${rows.length} displayed distinct categories.`
+    );
+  }
+
+  const missing = population.filter(g =>
+    rawDimensionValues(g, id).length === 0
+  ).length;
+
+  insights.push(
+    `${missing} gemstones have no recorded value for the primary variable.`
+  );
+
+  if (measure === "percentage" &&
+      !["scatter", "histogram"].includes(chart)) {
+    footer += " Percentages use the filtered gemstone population as their denominator. Multi-valued categories can sum above 100%.";
+  }
+
+  if (measure === "occurrences") {
+    footer += " Recorded occurrences count entries; distinct gemstone counts deduplicate each gemstone within a category.";
+  }
+
+  const d = getDimension(id);
+
+  if (d?.requiresComparableCurrency) {
+    const currencies = uniqueValues(population
+      .filter(g => numericDimensionValue(g, id) !== null)
+      .map(g => g.market.currency || "Unspecified"));
+
+    if (currencies.length > 1) {
+      footer += " WARNING: Multiple price currencies are present. These values are not directly comparable without conversion.";
+    }
+  }
+
+  $("#chartFooter").textContent = footer;
+
+  $("#statInsights").innerHTML = insights.map(text => `
+    <div class="insight-item">
+      ${escapeHTML(text)}
+    </div>
+  `).join("");
+
+  if (!tableRows.length) {
+    tableRows = rows.map(r => [
+      r.name,
+      r.count,
+      r.uniqueCount,
+      formatNumber(percent(
+        r.uniqueCount, population.length
+      ), 1) + "%"
+    ]);
+  }
+
+  const headers = chart === "scatter"
+    ? ["Gemstone", dimensionLabel(id), dimensionLabel(secondary)]
+    : chart === "histogram"
+      ? ["Interval", "Gemstones"]
+      : ["Category", "Occurrences", "Gemstones", "% of Population"];
+
+  APP.statisticsCSV = csvText([
+    headers, ...tableRows
+  ]);
+
+  $("#statTable").innerHTML = `
+    <table class="data-table">
+      <thead>
+        <tr>${headers.map(h =>
+          `<th>${escapeHTML(h)}</th>`
+        ).join("")}</tr>
+      </thead>
+
+      <tbody>
+        ${tableRows.map(row => `
+          <tr>${row.map(value =>
+            `<td>${escapeHTML(value)}</td>`
+          ).join("")}</tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+  const explanation = $("#statMeasureHelp");
+
+  explanation.textContent = measure === "occurrences"
+    ? "Counts individual recorded entries; one gemstone may contribute multiple occurrences."
+    : measure === "percentage"
+      ? "Counts unique gemstones per category divided by the filtered collection size. Totals may exceed 100%."
+      : "Counts each gemstone at most once within a category, even when that category is recorded repeatedly.";
+
+  renderCrossAnalysis();
 }
-function selectedComparisonGems(){
+
+/* =========================================
+   CATEGORY CROSS-ANALYSIS
+========================================= */
+
+function crossOptions(id) {
+  const population = statisticsPopulation();
+  const values = new Map();
+
+  for (const gem of population) {
+    for (const value of rawDimensionValues(gem, id)) {
+      const key = norm(value);
+      if (!values.has(key)) values.set(key, value);
+    }
+  }
+
+  return [...values.values()]
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function populateCrossValue(selectId, dimensionId) {
+  const select = $("#" + selectId);
+  const previous = select.value;
+
+  const options = crossOptions(dimensionId);
+
+  select.innerHTML = options.map(value => `
+    <option value="${escapeHTML(value)}">
+      ${escapeHTML(value)}
+    </option>
+  `).join("");
+
+  if (options.includes(previous)) {
+    select.value = previous;
+  }
+}
+
+function renderCrossAnalysis() {
+  const aId = $("#crossDimensionA").value;
+  const bId = $("#crossDimensionB").value;
+
+  if (!aId || !bId) return;
+
+  const aValue = $("#crossValueA").value;
+  const bValue = $("#crossValueB").value;
+
+  const population = statisticsPopulation();
+
+  const groupA = population.filter(g =>
+    rawDimensionValues(g, aId).some(v =>
+      norm(v) === norm(aValue)
+    )
+  );
+
+  const groupB = population.filter(g =>
+    rawDimensionValues(g, bId).some(v =>
+      norm(v) === norm(bValue)
+    )
+  );
+
+  const setB = new Set(groupB.map(g => g.id));
+  const intersection = groupA.filter(g => setB.has(g.id));
+
+  $("#crossResults").innerHTML = `
+    <div class="cross-counts">
+      <div class="cross-count-card">
+        <span>${escapeHTML(aValue || "First condition")}</span>
+        <strong>${groupA.length}</strong>
+      </div>
+
+      <div class="cross-count-card">
+        <span>${escapeHTML(bValue || "Second condition")}</span>
+        <strong>${groupB.length}</strong>
+      </div>
+
+      <div class="cross-count-card">
+        <span>Both conditions</span>
+        <strong>${intersection.length}</strong>
+      </div>
+    </div>
+
+    <div class="cross-gem-list">
+      ${intersection.map(g => `
+        <button class="cross-gem"
+          type="button"
+          data-cross-gem="${escapeHTML(g.id)}">
+          ◇ ${escapeHTML(g.name)}
+        </button>
+      `).join("")}
+    </div>
+
+    <p class="stats-explainer">
+      ${intersection.length} of ${population.length}
+      gemstones match both selected conditions.
+    </p>
+  `;
+}
+
+/* =========================================
+   COMPARISON — FIELD ANALYSIS
+========================================= */
+
+function comparisonValue(gem, path, type) {
+  if (type === "range") {
+    const d = getDimension(path);
+    if (!d) return "";
+
+    return formatRange(
+      valueAt(gem, d.minPath),
+      valueAt(gem, d.maxPath),
+      d.unit === "currency / carat"
+        ? (gem.market.currency || "") + " / carat"
+        : d.unit
+    );
+  }
+
+  if (type === "colors") {
+    return gem.colors.map(c =>
+      c.name + (c.rarity ? ` (${c.rarity})` : "")
+    ).join(", ");
+  }
+
+  return arrayText(valueAt(gem, path));
+}
+
+function comparisonStatus(gems, path, type) {
+  const values = gems.map(g =>
+    comparisonValue(g, path, type)
+  );
+
+  const present = values.filter(isFilled);
+
+  if (!present.length) return "empty";
+  if (present.length < gems.length) return "incomplete";
+
+  if (type === "text") return "different";
+
+  if (type === "range") {
+    const d = getDimension(path);
+    if (!d) return "different";
+
+    if (d.requiresComparableCurrency &&
+        new Set(gems.map(g => norm(g.market.currency))).size > 1) {
+      return "different";
+    }
+
+    const ranges = gems.map(g => [
+      numeric(valueAt(g, d.minPath)),
+      numeric(valueAt(g, d.maxPath))
+    ]);
+
+    if (ranges.some(r => r[0] === null && r[1] === null))
+      return "incomplete";
+
+    const lower = Math.max(...ranges.map(r =>
+      r[0] ?? r[1]
+    ));
+
+    const upper = Math.min(...ranges.map(r =>
+      r[1] ?? r[0]
+    ));
+
+    return lower <= upper ? "shared" : "different";
+  }
+
+  if (type === "multi" || type === "colors") {
+    const arrays = gems.map(g =>
+      type === "colors"
+        ? g.colors.map(c => c.name)
+        : asArray(valueAt(g, path))
+    );
+
+    const common = arrays.reduce(
+      (items, array) => overlapValues(items, array),
+      arrays[0]
+    );
+
+    return common.length ? "shared" : "different";
+  }
+
+  return new Set(values.map(norm)).size === 1
+    ? "shared" : "different";
+}
+
+/* =========================================
+   COMPARISON — SELECTED GEMS
+========================================= */
+
+function comparisonGems() {
   return APP.compareIds.map(findGem).filter(Boolean);
 }
-function renderWeights(){
-  $("#weightControls").innerHTML=Object.entries(APP.weights)
-    .map(([key,value])=>`
+
+function renderWeights() {
+  $("#weightControls").innerHTML =
+    Object.entries(APP.weights).map(([key, weight]) => `
       <label class="weight-item">
+
         <span class="weight-header">
-          ${esc(key[0].toUpperCase()+key.slice(1))}
-          <b>${value}</b>
+          <span>${escapeHTML(evidenceGroupLabel(key))}</span>
+          <strong data-weight-value="${key}">
+            ${weight}
+          </strong>
         </span>
-        <input type="range" min="0" max="100" step="5"
-          value="${value}" data-weight="${key}">
-      </label>`).join("");
+
+        <input type="range"
+          min="0" max="100" step="5"
+          value="${weight}"
+          data-weight="${key}">
+      </label>
+    `).join("");
 }
-function renderComparison(){
-  const gems=selectedComparisonGems();
-  $("#comparePick").innerHTML=
-    '<option value="">Select gemstone</option>'+
-    gemOptions(APP.compareIds);
-  $("#selectedGems").innerHTML=gems.map(g=>`
-    <div class="selected-gem" style="${style(g)}">
-      <button class="selected-gem-remove" type="button"
-        data-remove-compare="${esc(g.id)}">×</button>
-      <div class="selected-gem-image">
-        ${g.images.cover?`<img src="${esc(g.images.cover)}" alt="">`:"◇"}
+
+function pairSimilarityCard(pair) {
+  const groups = Object.keys(APP.weights);
+
+  return `<div class="glass-panel pair-card">
+    <div class="panel-eyebrow">
+      WEIGHTED SIMILARITY
+    </div>
+
+    <h3>${escapeHTML(pair.a.name)}
+      ↔ ${escapeHTML(pair.b.name)}</h3>
+
+    <div class="pair-score">${pair.score}%</div>
+
+    <div class="mini-meter">
+      <span style="width:${pair.score}%"></span>
+    </div>
+
+    <p class="pair-sub">
+      ${pair.evidence.length} recorded evidence points.
+      The score does not represent a probability.
+    </p>
+
+    <div class="similarity-breakdown">
+      ${groups.map(group => {
+        const matching = pair.evidence.filter(e =>
+          e.group === group
+        );
+
+        const strength = Math.min(1,
+          matching.reduce((sum, e) =>
+            sum + e.strength, 0
+          )
+        );
+
+        return `<div class="similarity-line">
+          <span>${escapeHTML(evidenceGroupLabel(group))}</span>
+          <div class="similarity-track">
+            <div class="similarity-fill"
+              style="width:${strength * 100}%"></div>
+          </div>
+          <span>${Math.round(strength * 100)}%</span>
+        </div>`;
+      }).join("")}
+    </div>
+
+    ${pair.evidence.map(e => `
+      <div class="inspector-item">
+        <span class="evidence-label">
+          ${escapeHTML(evidenceGroupLabel(e.group))}
+        </span>
+
+        <div class="evidence-value">
+          <strong>${escapeHTML(e.label)}</strong>:
+          ${escapeHTML(e.details)}
+        </div>
       </div>
-      <div class="selected-gem-body">${esc(g.name)}</div>
-    </div>`).join("");
+    `).join("")}
+
+  </div>`;
+}
+
+function renderComparison() {
+  const gems = comparisonGems();
+
+  $("#comparePick").innerHTML =
+    '<option value="">Choose gemstone</option>' +
+    sortGems(APP.gems)
+      .filter(g => !APP.compareIds.includes(g.id))
+      .map(g => `<option value="${escapeHTML(g.id)}">
+        ${escapeHTML(g.name)}</option>`)
+      .join("");
+
+  $("#selectedGems").innerHTML = gems.map(g => `
+    <div class="selected-gem" style="${gemStyle(g)}">
+      <button class="selected-gem-remove"
+        type="button"
+        data-remove-compare="${escapeHTML(g.id)}">
+        ×
+      </button>
+
+      <div class="selected-gem-image">
+        ${g.images.cover
+          ? `<img src="${escapeHTML(g.images.cover)}" alt="">`
+          : "◇"}
+      </div>
+
+      <div class="selected-gem-body">
+        ${escapeHTML(g.name)}
+      </div>
+    </div>
+  `).join("");
+
   renderWeights();
-  if(gems.length<2){
-    $("#comparisonResults").innerHTML=`
+
+  if (gems.length < 2) {
+    $("#comparisonResults").innerHTML = `
       <div class="compare-empty">
-        Select at least two gemstones to compare their attributes.
+        <div class="empty-gem">◇</div>
+        <h3>Your Comparison Laboratory</h3>
+        <p>Select at least two gemstones to compare.</p>
       </div>`;
     return;
   }
-  const pairs=[];
-  for(let i=0;i<gems.length;i++)
-    for(let j=i+1;j<gems.length;j++)
-      pairs.push(pairInfo(gems[i],gems[j]));
-  const pairCards=`<div class="comparison-pairs">
-    ${pairs.map(p=>`
-      <div class="glass-panel pair-card">
-        <div class="panel-eyebrow">SIMILARITY ANALYSIS</div>
-        <h3>${esc(p.a.name)} ↔ ${esc(p.b.name)}</h3>
-        <div class="pair-score">${p.score}%</div>
-        <div class="mini-meter"><span style="width:${p.score}%"></span></div>
-        <p class="pair-sub">${p.items.length} evidence points.
-          ${p.items.filter(e=>e.group==="science").length}
-          scientific observations.</p>
-        ${p.items.slice(0,8).map(e=>`
-          <div class="inspector-item">
-            <span class="evidence-label">
-              ${esc(descriptionOfEvidence(e))}</span>
-            <div class="evidence-value">
-              ${esc(e.label)}: ${esc(e.value)}</div>
-          </div>`).join("")}
-      </div>`).join("")}</div>`;
-  const rows=compareFields.map(([label,path])=>{
-    const values=gems.map(g=>compareValue(g,path));
-    const nonempty=values.filter(filled);
-    if(!nonempty.length)return "";
-    const same=nonempty.length===gems.length&&
-      unique(nonempty.map(clean)).length===1;
-    return `<tr class="${same?"shared":""}">
-      <td>${esc(label)}${same?" ✧":""}</td>
-      ${values.map(v=>`<td>${esc(v||"—")}</td>`).join("")}
-    </tr>`;
-  }).join("");
-  const table=`<div class="glass-panel compare-table-panel">
-    <div class="panel-eyebrow">ATTRIBUTE MATRIX</div>
+
+  const pairs = [];
+
+  for (let i = 0; i < gems.length; i++) {
+    for (let j = i + 1; j < gems.length; j++) {
+      pairs.push(relationshipPair(gems[i], gems[j]));
+    }
+  }
+
+  const pairCards = `<div class="comparison-pairs">
+    ${pairs.map(pairSimilarityCard).join("")}
+  </div>`;
+
+  const selectedSection = $("#compareSection").value;
+  const rowMode = $("#compareRows").value;
+  const includeUnknown = $("#compareUnknown").checked;
+
+  const sections = GEM_CONFIG.comparisonFields.filter(section =>
+    selectedSection === "all" ||
+    section.group === selectedSection
+  );
+
+  let rows = "";
+
+  for (const section of sections) {
+    for (const [label, path, type] of section.rows) {
+      const status = comparisonStatus(gems, path, type);
+
+      if (status === "empty" && !includeUnknown) continue;
+
+      if (rowMode === "shared" && status !== "shared")
+        continue;
+
+      if (rowMode === "different" && status !== "different")
+        continue;
+
+      if (rowMode === "complete" &&
+          ["empty", "incomplete"].includes(status))
+        continue;
+
+      rows += `<tr class="${status}">
+        <td>
+          ${escapeHTML(label)}
+          ${status === "shared" ? " ✧" : ""}
+        </td>
+
+        ${gems.map(g => {
+          const value = comparisonValue(g, path, type);
+
+          return `<td>${escapeHTML(
+            value || "Not recorded"
+          )}</td>`;
+        }).join("")}
+      </tr>`;
+    }
+  }
+
+  const table = `<div class="glass-panel compare-table-panel">
+    <div class="panel-eyebrow">
+      COMPLETE ATTRIBUTE MATRIX
+    </div>
+
     <h3>Side-by-Side Comparison</h3>
+
     <div class="table-scroll">
-      <table class="compare-table"><thead><tr>
-        <th>Characteristic</th>
-        ${gems.map(g=>`<th>${esc(g.name)}</th>`).join("")}
-      </tr></thead><tbody>${rows}</tbody></table>
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Characteristic</th>
+            ${gems.map(g =>
+              `<th>${escapeHTML(g.name)}</th>`
+            ).join("")}
+          </tr>
+        </thead>
+
+        <tbody>
+          ${rows || `<tr><td colspan="${gems.length + 1}">
+            No properties match these display settings.
+          </td></tr>`}
+        </tbody>
+      </table>
     </div>
   </div>`;
-  $("#comparisonResults").innerHTML=pairCards+table;
+
+  $("#comparisonResults").innerHTML = pairCards + table;
 }
 
 /* =========================================
-   BACKUP / IMPORT
+   BACKUPS
 ========================================= */
 
-function exportCollection(){
-  const payload={
-    format:"GemAtlasBackup",version:2,
-    exportedAt:new Date().toISOString(),
-    gems:APP.gems
+function exportCollection() {
+  const payload = {
+    format: "GemAtlasBackup",
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    gems: APP.gems
   };
-  const blob=new Blob([JSON.stringify(payload,null,2)],
-    {type:"application/json"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url;
-  a.download="gem-atlas-backup.json";
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),1000);
-  toast("Backup export requested");
+
+  downloadable(
+    JSON.stringify(payload, null, 2),
+    "gem-atlas-backup.json",
+    "application/json"
+  );
+
+  showToast("Backup export requested");
 }
-async function importCollection(file){
-  try{
-    const data=JSON.parse(await file.text());
-    if(data.format!=="GemAtlasBackup"||
-       !Array.isArray(data.gems))
-      throw Error("Invalid Gem Atlas backup");
-    const records=data.gems.map(normalizeGem);
-    if(records.some(g=>!g.id||!g.name))throw Error("Invalid record");
-    /*
-      Import merges by ID and overwrites matching records,
-      without deleting existing unrelated records.
-    */
-    if(APP.persistenceAvailable){
-      for(const gem of records)await saveGem(gem);
+
+async function importCollection(file) {
+  try {
+    const data = JSON.parse(await file.text());
+
+    if (data.format !== "GemAtlasBackup" ||
+        !Array.isArray(data.gems)) {
+      throw new Error("Not a Gem Atlas backup");
+    }
+
+    const records = data.gems.map(normalizeGem);
+
+    if (records.some(g => !g.id || !g.name)) {
+      throw new Error("Backup contains invalid records");
+    }
+
+    // Merge by stable ID; do not erase unrelated records.
+    if (APP.persistenceAvailable) {
+      await new Promise((resolve, reject) => {
+        const tx = APP.db.transaction(GEM_STORE, "readwrite");
+        const store = tx.objectStore(GEM_STORE);
+
+        records.forEach(g => store.put(g));
+
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+
       await loadCollection();
-    }else{
-      const map=new Map(APP.gems.map(g=>[g.id,g]));
-      records.forEach(g=>map.set(g.id,g));
-      APP.gems=[...map.values()];
+    } else {
+      const map = new Map(
+        APP.gems.map(g => [g.id, g])
+      );
+
+      records.forEach(g => map.set(g.id, g));
+      APP.gems = [...map.values()];
       renderAll();
     }
-    toast(`${records.length} records imported`);
-  }catch(e){console.error(e);toast("Import failed: "+e.message)}
+
+    showToast(`${records.length} records imported`);
+  } catch (error) {
+    console.error(error);
+    showToast("Import failed: " + error.message);
+  }
 }
 
 /* =========================================
-   RENDER ALL
+   NAVIGATION AND SELECTS
 ========================================= */
 
-function renderAll(){
-  renderSummary();updateSelectOptions();renderLibrary();
-  if(APP.view==="atlas")renderAtlas();
-  if(APP.view==="statistics")renderStatistics();
-  if(APP.view==="compare")renderComparison();
+function switchView(view) {
+  APP.view = view;
+
+  $$(".view").forEach(section => {
+    const active = section.id === "view-" + view;
+    section.classList.toggle("active", active);
+    section.hidden = !active;
+  });
+
+  $$(".main-tab").forEach(tab => {
+    const active = tab.dataset.view === view;
+    tab.classList.toggle("active", active);
+
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  });
+
+  if (view === "atlas") renderAtlas();
+  if (view === "statistics") renderStatistics();
+  if (view === "compare") renderComparison();
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateSelects() {
+  const classFilter = $("#classFilter");
+  const oldClass = classFilter.value;
+
+  classFilter.innerHTML =
+    '<option value="">All classifications</option>' +
+    GEM_CONFIG.classifications.map(c =>
+      `<option value="${escapeHTML(c)}">
+        ${escapeHTML(c)}</option>`
+    ).join("");
+
+  classFilter.value = oldClass;
+
+  const options = sortGems(APP.gems).map(g =>
+    `<option value="${escapeHTML(g.id)}">
+      ${escapeHTML(g.name)}</option>`
+  ).join("");
+
+  for (const selector of ["#pathFrom", "#pathTo"]) {
+    const el = $(selector);
+    const old = el.value;
+
+    el.innerHTML = options;
+
+    if (APP.gems.some(g => g.id === old)) {
+      el.value = old;
+    }
+  }
+
+  if (APP.gems.length > 1 &&
+      $("#pathFrom").value === $("#pathTo").value) {
+    $("#pathTo").selectedIndex = 1;
+  }
+}
+
+function renderAll() {
+  renderSummary();
+  updateSelects();
+  renderLibrary();
+
+  if (APP.view === "atlas") renderAtlas();
+  if (APP.view === "statistics") renderStatistics();
+  if (APP.view === "compare") renderComparison();
 }
 
 /* =========================================
-   EVENT BINDINGS
+   EVENT LISTENERS
 ========================================= */
 
-function attachEvents(){
-  $("#brandHome").onclick=()=>switchView("library");
-  $("#headerAdd").onclick=()=>openEditor();
-  $("#emptyAdd").onclick=()=>openEditor();
-  $("#exportData").onclick=exportCollection;
-  $("#importData").onclick=()=>$("#importFile").click();
-  $("#importFile").onchange=async e=>{
-    const file=e.target.files?.[0];
-    if(file)await importCollection(file);
-    e.target.value="";
+function attachEvents() {
+
+  $("#brandHome").onclick = () => switchView("library");
+
+  $("#headerAdd").onclick = () => openEditor();
+  $("#emptyAdd").onclick = () => openEditor();
+
+  $("#exportData").onclick = exportCollection;
+
+  $("#importData").onclick = () =>
+    $("#importFile").click();
+
+  $("#importFile").onchange = async event => {
+    const file = event.target.files?.[0];
+
+    if (file) await importCollection(file);
+
+    event.target.value = "";
   };
 
-  $$(".main-tab").forEach(b=>b.onclick=()=>
-    switchView(b.dataset.view));
+  $("#openAbout").onclick = () =>
+    openLayer("#aboutBackdrop");
 
-  ["searchInput","rarityFilter","classFilter","sortFilter"]
-    .forEach(id=>$("#"+id).addEventListener(
-      id==="searchInput"?"input":"change",renderLibrary));
+  $("#closeAbout").onclick = () =>
+    closeLayer("#aboutBackdrop");
 
-  $("#quickFilters").onclick=e=>{
-    const b=e.target.closest("[data-filter]");
-    if(!b)return;
-    APP.quickFilter=b.dataset.filter;
-    $$(".filter-chip").forEach(x=>x.classList.toggle(
-      "active",x===b));
+  $$(".main-tab").forEach(tab => {
+    tab.onclick = () => switchView(tab.dataset.view);
+  });
+
+  // LIBRARY
+  $("#searchInput").oninput = renderLibrary;
+
+  ["rarityFilter", "classFilter", "sortFilter"]
+    .forEach(id => {
+      $("#" + id).onchange = renderLibrary;
+    });
+
+  $("#clearFilters").onclick = resetFilters;
+
+  $("#quickFilters").onclick = event => {
+    const button = event.target.closest("[data-filter]");
+    if (!button) return;
+
+    APP.quickFilter = button.dataset.filter;
+
+    $$(".filter-chip").forEach(b =>
+      b.classList.toggle("active", b === button)
+    );
+
     renderLibrary();
   };
-  $("#clearFilters").onclick=resetFilters;
 
-  $("#gemGrid").onclick=async e=>{
-    const fav=e.target.closest("[data-favorite]");
-    if(fav){await toggleFavorite(fav.dataset.favorite);return}
-    const card=e.target.closest("[data-gem-id]");
-    if(card)openProfile(card.dataset.gemId);
+  $("#gemGrid").onclick = async event => {
+    const favorite = event.target.closest("[data-favorite]");
+
+    if (favorite) {
+      await toggleFavorite(favorite.dataset.favorite);
+      return;
+    }
+
+    const card = event.target.closest("[data-gem-id]");
+    if (card) openProfile(card.dataset.gemId);
   };
-  $("#gemGrid").onkeydown=e=>{
-    if(e.target.matches(".gem-card")&&
-      ["Enter"," "].includes(e.key)){
-      e.preventDefault();openProfile(e.target.dataset.gemId);
+
+  $("#gemGrid").onkeydown = event => {
+    if (event.target.matches(".gem-card") &&
+        ["Enter", " "].includes(event.key)) {
+      event.preventDefault();
+      openProfile(event.target.dataset.gemId);
     }
   };
 
-  $("#profileContent").onclick=async e=>{
-    const open=e.target.closest("[data-open-gem]");
-    if(open){openProfile(open.dataset.openGem);return}
-    const button=e.target.closest("[data-profile]");
-    if(!button)return;
-    const id=APP.currentGemId;
-    switch(button.dataset.profile){
-      case "close":closeProfile();break;
-      case "edit":openEditor(id);break;
-      case "duplicate":await duplicateGem(id);break;
-      case "delete":requestDelete(id);break;
-      case "compare":
-        if(!APP.compareIds.includes(id)&&APP.compareIds.length<4)
-          APP.compareIds.push(id);
-        closeProfile();switchView("compare");break;
+  // PROFILE
+  $("#profileContent").onclick = async event => {
+    const open = event.target.closest("[data-open-gem]");
+
+    if (open) {
+      openProfile(open.dataset.openGem);
+      return;
+    }
+
+    const button = event.target.closest(
+      "[data-profile-action]"
+    );
+
+    if (!button) return;
+
+    const id = APP.currentGemId;
+
+    switch (button.dataset.profileAction) {
+      case "close":
+        closeProfile();
+        break;
+
+      case "edit":
+        openEditor(id);
+        break;
+
+      case "delete":
+        requestDelete(id);
+        break;
+
+      case "duplicate":
+        await duplicateGem(id);
+        break;
+
       case "atlas":
-        APP.inspector={type:"gem",id};
-        closeProfile();switchView("atlas");break;
+        APP.inspector = { type: "gem", id };
+        closeProfile();
+        switchView("atlas");
+        break;
+
+      case "compare":
+        if (!APP.compareIds.includes(id) &&
+            APP.compareIds.length < 4) {
+          APP.compareIds.push(id);
+        }
+        closeProfile();
+        switchView("compare");
+        break;
     }
   };
 
-  $("#editorTabs").onclick=e=>{
-    const b=e.target.closest("[data-editor-tab]");
-    if(b)setEditorTab(b.dataset.editorTab);
+  // EDITOR TABS
+  $("#editorTabs").onclick = event => {
+    const button = event.target.closest(
+      "[data-editor-tab]"
+    );
+
+    if (button) setEditorTab(button.dataset.editorTab);
   };
-  $("#editorFields").addEventListener("input",e=>{
-    const t=e.target;
-    if(t.dataset.path)updateEditorField(t);
-    if(t.dataset.colorField)updateColor(t);
-    if(t.dataset.manualField)updateManual(t);
+
+  $("#editorFields").addEventListener("input", event => {
+    const target = event.target;
+
+    if (target.dataset.path)
+      updateEditorValue(target);
+
+    if (target.dataset.colorField)
+      updateColorValue(target);
+
+    if (target.dataset.manualField)
+      updateManualValue(target);
   });
-  $("#editorFields").addEventListener("change",async e=>{
-    const t=e.target;
-    if(t.dataset.path)updateEditorField(t);
-    if(t.dataset.colorField)updateColor(t);
-    if(t.dataset.manualField)updateManual(t);
-    if(t.dataset.classification){
-      const s=new Set(APP.editingGem.classifications);
-      if(t.checked)s.add(t.dataset.classification);
-      else s.delete(t.dataset.classification);
-      APP.editingGem.classifications=[...s];
+
+  $("#editorFields").addEventListener(
+    "change", async event => {
+      const target = event.target;
+
+      if (target.dataset.path)
+        updateEditorValue(target);
+
+      if (target.dataset.colorField)
+        updateColorValue(target);
+
+      if (target.dataset.manualField)
+        updateManualValue(target);
+
+      if (target.dataset.classification) {
+        const current = new Set(
+          APP.editingGem.classifications
+        );
+
+        if (target.checked)
+          current.add(target.dataset.classification);
+        else
+          current.delete(target.dataset.classification);
+
+        APP.editingGem.classifications = [...current];
+      }
+
+      if (target.dataset.imageType)
+        await handleImageUpload(target);
     }
-    if(t.dataset.imageType)await uploadImage(t);
-  });
-  $("#editorFields").onclick=e=>{
-    if(e.target.closest("#addColorRow")){
+  );
+
+  $("#editorFields").onclick = event => {
+    if (event.target.closest("#addColorRow")) {
       APP.editingGem.colors.push({
-        name:"",rarity:"Common",hex:"#a78bd7"
-      });renderEditorFields();
-    }
-    const c=e.target.closest("[data-remove-color]");
-    if(c){
-      APP.editingGem.colors.splice(Number(c.dataset.removeColor),1);
+        name: "",
+        rarity: "Common"
+      });
       renderEditorFields();
+      return;
     }
-    if(e.target.closest("#addManualRow")){
-      APP.editingGem.manualRelations.push({
-        targetId:"",type:"Related material",note:""
-      });renderEditorFields();
-    }
-    const r=e.target.closest("[data-remove-manual]");
-    if(r){
-      APP.editingGem.manualRelations.splice(
-        Number(r.dataset.removeManual),1);
-      renderEditorFields();
-    }
-    const img=e.target.closest("[data-remove-image]");
-    if(img){
-      APP.editingGem.images[img.dataset.removeImage]="";
-      renderEditorFields();
-    }
-  };
-  $("#gemForm").onsubmit=async e=>{
-    e.preventDefault();await saveEditingGem();
-  };
-  $("#closeEditor").onclick=closeEditor;
-  $("#cancelEditor").onclick=closeEditor;
-  $("#cancelDelete").onclick=()=>{
-    APP.deleteId=null;closeLayer("#confirmBackdrop");
-  };
-  $("#confirmDelete").onclick=executeDelete;
 
-  $("#atlasMode").onchange=()=>renderAtlas(true);
-  $("#atlasCategory").onchange=()=>renderAtlas(true);
-  $("#atlasThreshold").onchange=()=>renderAtlas(true);
-  $("#atlasLabels").onchange=()=>drawNetwork();
-  $("#zoomIn").onclick=()=>transformMap(1.25);
-  $("#zoomOut").onclick=()=>transformMap(.8);
-  $("#resetMap").onclick=()=>{
-    APP.network.scale=1;
-    APP.network.x=0;APP.network.y=0;
+    const removeColor = event.target.closest(
+      "[data-remove-color]"
+    );
+
+    if (removeColor) {
+      APP.editingGem.colors.splice(
+        Number(removeColor.dataset.removeColor), 1
+      );
+      renderEditorFields();
+      return;
+    }
+
+    if (event.target.closest("#addManualRow")) {
+      APP.editingGem.manualRelations.push({
+        targetId: "",
+        type: "Custom Relationship",
+        note: ""
+      });
+      renderEditorFields();
+      return;
+    }
+
+    const removeManual = event.target.closest(
+      "[data-remove-manual]"
+    );
+
+    if (removeManual) {
+      APP.editingGem.manualRelations.splice(
+        Number(removeManual.dataset.removeManual), 1
+      );
+      renderEditorFields();
+      return;
+    }
+
+    const removeImage = event.target.closest(
+      "[data-remove-image]"
+    );
+
+    if (removeImage) {
+      APP.editingGem.images[
+        removeImage.dataset.removeImage
+      ] = "";
+
+      renderEditorFields();
+    }
+  };
+
+  $("#gemForm").onsubmit = async event => {
+    event.preventDefault();
+    await saveEditingGem();
+  };
+
+  $("#closeEditor").onclick = closeEditor;
+  $("#cancelEditor").onclick = closeEditor;
+
+  $("#cancelDelete").onclick = () => {
+    APP.deleteId = null;
+    closeLayer("#confirmBackdrop");
+  };
+
+  $("#confirmDelete").onclick = executeDelete;
+
+  // ATLAS
+  $("#atlasMode").onchange = () => renderAtlas(true);
+  $("#atlasCategory").onchange = () => renderAtlas(true);
+  $("#atlasThreshold").onchange = () => renderAtlas(true);
+  $("#atlasLabels").onchange = drawNetwork;
+
+  $("#zoomIn").onclick = () => zoomNetwork(1.25);
+  $("#zoomOut").onclick = () => zoomNetwork(.8);
+
+  $("#resetMap").onclick = () => {
+    APP.network.scale = 1;
+    APP.network.x = 0;
+    APP.network.y = 0;
     drawNetwork();
   };
-  $("#treeStage").onclick=e=>{
-    const b=e.target.closest("[data-tree-gem]");
-    if(b){
-      APP.inspector={type:"gem",id:b.dataset.treeGem};
+
+  $("#treeStage").onclick = event => {
+    const gem = event.target.closest("[data-tree-gem]");
+    if (!gem) return;
+
+    APP.inspector = {
+      type: "gem",
+      id: gem.dataset.treeGem
+    };
+
+    renderInspector();
+  };
+
+  $("#inspectorContent").onclick = event => {
+    const open = event.target.closest(
+      "[data-inspect-open]"
+    );
+
+    if (open) {
+      openProfile(open.dataset.inspectOpen);
+      return;
+    }
+
+    const edge = event.target.closest(
+      "[data-inspect-edge]"
+    );
+
+    if (edge) {
+      const [a, b] = edge.dataset.inspectEdge.split("|");
+
+      APP.inspector = { type: "edge", a, b };
       renderInspector();
     }
   };
-  $("#inspectorContent").onclick=e=>{
-    const open=e.target.closest("[data-inspect-open]");
-    if(open){openProfile(open.dataset.inspectOpen);return}
-    const edge=e.target.closest("[data-inspect-edge]");
-    if(edge){
-      const [a,b]=edge.dataset.inspectEdge.split("|");
-      APP.inspector={type:"edge",a,b};renderInspector();
-    }
-  };
-  $("#findPath").onclick=renderPath;
 
-  const svg=$("#networkSvg");
-  svg.addEventListener("click",e=>{
-    if(APP.drag?.moved)return;
-    const node=e.target.closest("[data-node-id]");
-    const edge=e.target.closest("[data-edge-from]");
-    if(node){
-      APP.inspector={type:"gem",id:node.dataset.nodeId};
-    }else if(edge){
-      APP.inspector={
-        type:"edge",a:edge.dataset.edgeFrom,
-        b:edge.dataset.edgeTo
+  $("#findPath").onclick = renderPathResult;
+
+  // GRAPH INTERACTION
+  const svg = $("#networkSvg");
+
+  svg.addEventListener("click", event => {
+    if (APP.suppressGraphClick) return;
+
+    const node = event.target.closest("[data-node-id]");
+    const edge = event.target.closest("[data-edge-from]");
+
+    if (node) {
+      APP.inspector = {
+        type: "gem",
+        id: node.dataset.nodeId
       };
-    }else{return}
-    renderInspector();drawNetwork();
-  });
-  svg.addEventListener("pointerdown",e=>{
-    const p=screenToSVG(e);
-    APP.drag={
-      x:p.x,y:p.y,oldX:APP.network.x,
-      oldY:APP.network.y,moved:false
-    };
-    svg.setPointerCapture(e.pointerId);
-  });
-  svg.addEventListener("pointermove",e=>{
-    if(!APP.drag)return;
-    const p=screenToSVG(e);
-    const dx=p.x-APP.drag.x,dy=p.y-APP.drag.y;
-    if(Math.hypot(dx,dy)>5)APP.drag.moved=true;
-    if(!APP.drag.moved)return;
-    APP.network.x=APP.drag.oldX+dx;
-    APP.network.y=APP.drag.oldY+dy;
+    } else if (edge) {
+      APP.inspector = {
+        type: "edge",
+        a: edge.dataset.edgeFrom,
+        b: edge.dataset.edgeTo
+      };
+    } else {
+      return;
+    }
+
+    renderInspector();
     drawNetwork();
   });
-  svg.addEventListener("pointerup",()=>{
-    if(!APP.drag)return;
-    const moved=APP.drag.moved;
-    setTimeout(()=>{
-      if(APP.drag?.moved===moved)APP.drag=null;
-    },0);
+
+  svg.addEventListener("pointerdown", event => {
+    const position = pointerPosition(event);
+
+    APP.pointer = {
+      x: position.x,
+      y: position.y,
+      oldX: APP.network.x,
+      oldY: APP.network.y,
+      moved: false
+    };
+
+    svg.setPointerCapture(event.pointerId);
   });
-  svg.addEventListener("wheel",e=>{
-    e.preventDefault();
-    const p=screenToSVG(e);
-    transformMap(e.deltaY<0?1.12:.89,p.x,p.y);
-  },{passive:false});
 
-  ["statDimension","statSecond","statMetric"]
-    .forEach(id=>$("#"+id).onchange=renderStatistics);
-  $("#statChart").onchange=updateStatControls;
+  svg.addEventListener("pointermove", event => {
+    if (!APP.pointer) return;
 
-  $("#addCompare").onclick=()=>{
-    const id=$("#comparePick").value;
-    if(!id)return;
-    if(APP.compareIds.length>=4){
-      toast("Maximum four gemstones");return;
+    const position = pointerPosition(event);
+    const dx = position.x - APP.pointer.x;
+    const dy = position.y - APP.pointer.y;
+
+    if (Math.hypot(dx, dy) > 6)
+      APP.pointer.moved = true;
+
+    if (!APP.pointer.moved) return;
+
+    APP.network.x = APP.pointer.oldX + dx;
+    APP.network.y = APP.pointer.oldY + dy;
+
+    drawNetwork();
+  });
+
+  svg.addEventListener("pointerup", () => {
+    if (!APP.pointer) return;
+
+    APP.suppressGraphClick = APP.pointer.moved;
+    APP.pointer = null;
+
+    setTimeout(() => {
+      APP.suppressGraphClick = false;
+    }, 100);
+  });
+
+  svg.addEventListener("pointercancel", () => {
+    APP.pointer = null;
+  });
+
+  svg.addEventListener("wheel", event => {
+    event.preventDefault();
+
+    const point = pointerPosition(event);
+
+    zoomNetwork(
+      event.deltaY < 0 ? 1.13 : .89,
+      point.x, point.y
+    );
+  }, { passive: false });
+
+  // STATISTICS
+  [
+    "statScope",
+    "statRarityFilter",
+    "statMissing",
+    "statMeasure",
+    "statTopN",
+    "statSort",
+    "statNumericMode",
+    "statBins"
+  ].forEach(id => {
+    $("#" + id).onchange = renderStatistics;
+  });
+
+  $("#statChart").onchange =
+    updateStatisticsControls;
+
+  $("#statDimension").onchange = renderStatistics;
+  $("#statSecond").onchange = renderStatistics;
+
+  $("#exportStatistics").onclick = () => {
+    downloadable(
+      APP.statisticsCSV,
+      "gem-atlas-statistics.csv",
+      "text/csv;charset=utf-8"
+    );
+
+    showToast("Statistics CSV export requested");
+  };
+
+  ["crossDimensionA", "crossDimensionB"].forEach(id => {
+    $("#" + id).onchange = () => {
+      const suffix = id.endsWith("A") ? "A" : "B";
+
+      populateCrossValue(
+        "crossValue" + suffix,
+        $("#" + id).value
+      );
+
+      renderCrossAnalysis();
+    };
+  });
+
+  $("#crossValueA").onchange = renderCrossAnalysis;
+  $("#crossValueB").onchange = renderCrossAnalysis;
+
+  $("#crossResults").onclick = event => {
+    const button = event.target.closest(
+      "[data-cross-gem]"
+    );
+
+    if (button)
+      openProfile(button.dataset.crossGem);
+  };
+
+  // COMPARISON
+  $("#addCompare").onclick = () => {
+    const id = $("#comparePick").value;
+    if (!id) return;
+
+    if (APP.compareIds.length >= 4) {
+      showToast("Maximum of four gemstones");
+      return;
     }
-    if(!APP.compareIds.includes(id))APP.compareIds.push(id);
-    renderComparison();
-  };
-  $("#clearCompare").onclick=()=>{
-    APP.compareIds=[];renderComparison();
-  };
-  $("#selectedGems").onclick=e=>{
-    const b=e.target.closest("[data-remove-compare]");
-    if(b){
-      APP.compareIds=APP.compareIds.filter(
-        id=>id!==b.dataset.removeCompare);
-      renderComparison();
+
+    if (!APP.compareIds.includes(id)) {
+      APP.compareIds.push(id);
     }
-  };
-  $("#weightControls").oninput=e=>{
-    const t=e.target;
-    if(!t.dataset.weight)return;
-    APP.weights[t.dataset.weight]=Number(t.value);
-    renderComparison();
-  };
-  $("#resetWeights").onclick=()=>{
-    APP.weights={...GEM_CONFIG.weights};
+
     renderComparison();
   };
 
-  for(const id of ["profileBackdrop","editorBackdrop",
-                     "confirmBackdrop"]){
-    $("#"+id).onclick=e=>{
-      if(e.target!==$("#"+id))return;
-      if(id==="profileBackdrop")closeProfile();
-      else if(id==="editorBackdrop")closeEditor();
-      else{
-        APP.deleteId=null;
+  $("#clearCompare").onclick = () => {
+    APP.compareIds = [];
+    renderComparison();
+  };
+
+  $("#selectedGems").onclick = event => {
+    const remove = event.target.closest(
+      "[data-remove-compare]"
+    );
+
+    if (!remove) return;
+
+    APP.compareIds = APP.compareIds.filter(id =>
+      id !== remove.dataset.removeCompare
+    );
+
+    renderComparison();
+  };
+
+  ["compareSection", "compareRows", "compareUnknown"]
+    .forEach(id => {
+      $("#" + id).onchange = renderComparison;
+    });
+
+  $("#weightControls").oninput = event => {
+    const target = event.target;
+    const group = target.dataset.weight;
+
+    if (!group) return;
+
+    APP.weights[group] = Number(target.value);
+
+    const label = $("#weightControls").querySelector(
+      `[data-weight-value="${group}"]`
+    );
+
+    if (label) label.textContent = target.value;
+  };
+
+  // Calculate on release so sliders don't
+  // destroy their own DOM elements mid-drag.
+  $("#weightControls").onchange = renderComparison;
+
+  $("#resetWeights").onclick = () => {
+    APP.weights = { ...GEM_CONFIG.weights };
+    renderComparison();
+  };
+
+  // BACKDROPS
+  for (const id of [
+    "profileBackdrop",
+    "editorBackdrop",
+    "confirmBackdrop",
+    "aboutBackdrop"
+  ]) {
+    $("#" + id).onclick = event => {
+      if (event.target !== $("#" + id)) return;
+
+      if (id === "profileBackdrop") closeProfile();
+      if (id === "editorBackdrop") closeEditor();
+
+      if (id === "confirmBackdrop") {
+        APP.deleteId = null;
         closeLayer("#confirmBackdrop");
       }
+
+      if (id === "aboutBackdrop")
+        closeLayer("#aboutBackdrop");
     };
   }
-  document.addEventListener("keydown",e=>{
-    if(e.key!=="Escape")return;
-    if($("#confirmBackdrop").classList.contains("is-open")){
-      APP.deleteId=null;closeLayer("#confirmBackdrop");
-    }else if($("#editorBackdrop").classList.contains("is-open")){
-      closeEditor();
-    }else if($("#profileBackdrop").classList.contains("is-open")){
-      closeProfile();
+
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+
+    const stack = [
+      "#confirmBackdrop",
+      "#editorBackdrop",
+      "#profileBackdrop",
+      "#aboutBackdrop"
+    ];
+
+    const open = stack.find(selector =>
+      $(selector).classList.contains("is-open")
+    );
+
+    if (open) {
+      if (open === "#profileBackdrop") closeProfile();
+      else {
+        closeLayer(open);
+        if (open === "#editorBackdrop")
+          APP.editingGem = null;
+        if (open === "#confirmBackdrop")
+          APP.deleteId = null;
+      }
     }
   });
 }
@@ -2017,26 +4151,69 @@ function attachEvents(){
    INITIALIZATION
 ========================================= */
 
-async function initializeApp(){
+async function initializeApp() {
   attachEvents();
-  const options=GEM_CONFIG.dimensions.map(d=>
-    `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join("");
-  $("#statDimension").innerHTML=options;
-  $("#statSecond").innerHTML=options;
-  $("#statDimension").value="rarity";
-  $("#statSecond").value="family.group";
-  updateStatControls();
-  try{
-    APP.db=await openDatabase();
+
+  const dimensions = GEM_CONFIG.dimensions;
+  const categorical = dimensions.filter(d =>
+    ["single", "multi", "colors", "colorRarity"]
+      .includes(d.type)
+  );
+
+  $("#statDimension").innerHTML = optionHTML(dimensions);
+  $("#statSecond").innerHTML = optionHTML(dimensions);
+
+  $("#statDimension").value = "rarity";
+  $("#statSecond").value = "family.group";
+
+  $("#crossDimensionA").innerHTML =
+    optionHTML(categorical);
+
+  $("#crossDimensionB").innerHTML =
+    optionHTML(categorical);
+
+  $("#crossDimensionA").value = "rarity";
+  $("#crossDimensionB").value = "family.group";
+
+  updateStatisticsControls();
+
+  try {
+    APP.db = await openDatabase();
     await seedDatabase();
-    APP.persistenceAvailable=true;
+
+    APP.persistenceAvailable = true;
     await loadCollection();
-  }catch(e){
-    console.error("Database initialization:",e);
-    APP.persistenceAvailable=false;
-    APP.gems=GEM_SEED_DATA.map(normalizeGem);
+
+  } catch (error) {
+    console.error("Gem Atlas database error:", error);
+
+    APP.persistenceAvailable = false;
+    APP.gems = GEM_SEED_DATA.map(normalizeGem);
     renderAll();
-    toast("Storage unavailable — changes are session-only");
+
+    showToast(
+      "Local storage unavailable — session-only collection"
+    );
   }
+
+  populateCrossValue(
+    "crossValueA", $("#crossDimensionA").value
+  );
+
+  populateCrossValue(
+    "crossValueB", $("#crossDimensionB").value
+  );
+
+  renderCrossAnalysis();
+
+  console.info(
+    "Gem Atlas V2 initialized:",
+    APP.gems.length,
+    "gemstones"
+  );
 }
-document.addEventListener("DOMContentLoaded",initializeApp);
+
+document.addEventListener(
+  "DOMContentLoaded",
+  initializeApp
+);
