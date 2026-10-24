@@ -336,8 +336,59 @@ function dbGetMeta(key) {
 }
 
 function dbSaveGem(gem) {
-  return dbTransaction(GEM_STORE, "readwrite", store => {
-    store.put(clone(gem));
+  return new Promise((resolve, reject) => {
+    if (!APP.db) {
+      reject(new Error("Database is not open"));
+      return;
+    }
+
+    let transaction;
+
+    try {
+      transaction = APP.db.transaction(
+        GEM_STORE,
+        "readwrite"
+      );
+
+      const store = transaction.objectStore(GEM_STORE);
+
+      const record = JSON.parse(JSON.stringify(gem));
+
+      if (!record.id) {
+        throw new Error("Missing gemstone ID");
+      }
+
+      const request = store.put(record);
+
+      request.onerror = () => {
+        console.error(
+          "Gemstone write error:",
+          request.error
+        );
+      };
+
+      transaction.oncomplete = () => {
+        resolve(record);
+      };
+
+      transaction.onerror = () => {
+        reject(
+          transaction.error ||
+          new Error("Database transaction failed")
+        );
+      };
+
+      transaction.onabort = () => {
+        reject(
+          transaction.error ||
+          new Error("Database transaction aborted")
+        );
+      };
+
+    } catch (error) {
+      console.error("Database save exception:", error);
+      reject(error);
+    }
   });
 }
 
