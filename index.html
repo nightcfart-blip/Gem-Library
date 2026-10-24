@@ -3,390 +3,428 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  >
-
+  <meta name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080b13">
-
-  <title>Gem Atlas — A Living Gemstone Encyclopedia</title>
-
+  <title>Gem Atlas — The Living Collection</title>
   <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
-  <div class="app-shell">
+<div class="app-shell">
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
 
-    <!-- BACKGROUND DECORATION -->
-    <div class="ambient ambient-one"></div>
-    <div class="ambient ambient-two"></div>
-    <div class="ambient ambient-three"></div>
+  <header class="topbar">
+    <button class="brand" id="brandHome" type="button">
+      <span class="brand-icon">◇</span>
+      <span class="brand-copy">
+        <strong>GEM ATLAS</strong>
+        <small>THE LIVING COLLECTION</small>
+      </span>
+    </button>
 
-    <!-- TOP HEADER -->
-    <header class="topbar">
+    <div class="top-actions">
+      <button class="icon-button" id="exportData"
+        title="Backup collection" type="button">⇩</button>
+      <button class="icon-button" id="importData"
+        title="Import backup" type="button">⇧</button>
+      <input id="importFile" type="file"
+        accept=".json,application/json" hidden>
+      <button class="primary-button" id="headerAdd"
+        type="button">＋ <span>New Gem</span></button>
+    </div>
+  </header>
 
-      <div class="brand" id="brandHome" role="button" tabindex="0">
-        <span class="brand-icon">◇</span>
+  <main class="main-content">
 
-        <div class="brand-copy">
-          <strong>GEM ATLAS</strong>
-          <small>THE LIVING COLLECTION</small>
+    <section class="intro-section">
+      <div class="eyebrow">
+        <span class="eyebrow-line"></span>
+        A PERSONAL GEMOLOGICAL ARCHIVE
+      </div>
+      <h1>The Gemstone <em>Atlas.</em></h1>
+      <p class="intro-description">
+        Explore mineral families, compare characteristics,
+        investigate patterns and discover the connections
+        hidden within your collection.
+      </p>
+    </section>
+
+    <section class="summary-grid">
+      <div class="summary-card">
+        <span class="summary-label">GEMSTONES</span>
+        <strong id="statTotal">0</strong>
+        <span class="summary-sub">Collection entries</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">MINERAL SPECIES</span>
+        <strong id="statFamilies">0</strong>
+        <span class="summary-sub">Recorded mineral identities</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">RARE & EXOTIC</span>
+        <strong id="statRare">0</strong>
+        <span class="summary-sub">Catalog rarity assessments</span>
+      </div>
+      <div class="summary-card">
+        <span class="summary-label">RELATIONSHIPS</span>
+        <strong id="statLinks">0</strong>
+        <span class="summary-sub">Detected connected pairs</span>
+      </div>
+    </section>
+
+    <nav class="main-tabs" aria-label="Main navigation">
+      <button class="main-tab active" data-view="library"
+        type="button">◇ <span>Library</span></button>
+      <button class="main-tab" data-view="atlas"
+        type="button">◎ <span>Family Atlas</span></button>
+      <button class="main-tab" data-view="statistics"
+        type="button">▥ <span>Observatory</span></button>
+      <button class="main-tab" data-view="compare"
+        type="button">⚖ <span>Comparison Lab</span></button>
+    </nav>
+
+    <!-- LIBRARY -->
+    <section class="view active" id="view-library">
+      <div class="section-header">
+        <div>
+          <span class="eyebrow">THE COLLECTION</span>
+          <h2>Explore the Archive</h2>
+        </div>
+        <span class="library-count" id="libraryCount"></span>
+      </div>
+
+      <div class="library-toolbar">
+        <label class="search-field">
+          <span>⌕</span>
+          <input id="searchInput" type="search"
+            placeholder="Search gems, families, colors, origins...">
+        </label>
+        <div class="toolbar-selects">
+          <select id="rarityFilter">
+            <option value="">All rarities</option>
+            <option>Common</option>
+            <option>Uncommon</option>
+            <option>Rare</option>
+            <option>Exotic</option>
+          </select>
+          <select id="classFilter">
+            <option value="">All classifications</option>
+          </select>
+          <select id="sortFilter">
+            <option value="name">Name A–Z</option>
+            <option value="name-desc">Name Z–A</option>
+            <option value="rarity">Rarity</option>
+            <option value="hardness">Hardness</option>
+            <option value="newest">Newest</option>
+          </select>
         </div>
       </div>
 
-      <div class="top-actions">
-        <button
-          class="icon-button"
-          id="openAbout"
-          type="button"
-          aria-label="About Gem Atlas"
-          title="About this collection"
-        >ⓘ</button>
+      <div class="filter-strip">
+        <div class="quick-filters" id="quickFilters">
+          <button class="filter-chip active" data-filter="all"
+            type="button">All Gems</button>
+          <button class="filter-chip" data-filter="favorites"
+            type="button">♡ Favorites</button>
+          <button class="filter-chip" data-filter="natural"
+            type="button">Natural</button>
+          <button class="filter-chip" data-filter="synthetic"
+            type="button">Synthetic</button>
+          <button class="filter-chip" data-filter="organic"
+            type="button">Organic</button>
+        </div>
+        <button class="text-button" id="clearFilters"
+          type="button">Reset</button>
+      </div>
 
-        <button
-          class="primary-button header-add"
-          id="headerAdd"
-          type="button"
-        >
-          <span>＋</span>
-          <span>New Gem</span>
+      <div class="gem-grid" id="gemGrid"></div>
+      <div class="empty-state" id="emptyState" hidden>
+        <div class="empty-symbol">◇</div>
+        <h3>No gemstones found</h3>
+        <p>Change the filters or add a gemstone.</p>
+        <button class="secondary-button" id="emptyAdd"
+          type="button">＋ Add Gemstone</button>
+      </div>
+    </section>
+
+    <!-- FAMILY ATLAS -->
+    <section class="view" id="view-atlas">
+      <div class="section-header">
+        <div>
+          <span class="eyebrow">RELATIONSHIP CARTOGRAPHY</span>
+          <h2>The Family Atlas</h2>
+        </div>
+        <span class="library-count" id="atlasCount"></span>
+      </div>
+
+      <p class="section-description">
+        Follow scientific hierarchies or explore a constellation
+        of shared characteristics. Tap a gemstone or connection
+        to examine it.
+      </p>
+
+      <div class="glass-panel atlas-controls">
+        <div class="control-field">
+          <label for="atlasMode">Visualization</label>
+          <select id="atlasMode">
+            <option value="network">Constellation Network</option>
+            <option value="tree">Mineral Family Tree</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="atlasCategory">Relationship category</label>
+          <select id="atlasCategory">
+            <option value="all">All categories</option>
+            <option value="science">Scientific</option>
+            <option value="geography">Geographic</option>
+            <option value="culture">Historical & Cultural</option>
+            <option value="tradition">Symbolic & Traditional</option>
+            <option value="manual">Manual Relationships</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="atlasThreshold">Minimum link strength</label>
+          <select id="atlasThreshold">
+            <option value="0">All detected connections</option>
+            <option value="20">20% or stronger</option>
+            <option value="40">40% or stronger</option>
+            <option value="60">60% or stronger</option>
+            <option value="80">80% or stronger</option>
+          </select>
+        </div>
+        <label class="check-control">
+          <input id="atlasLabels" type="checkbox" checked>
+          Show labels
+        </label>
+      </div>
+
+      <div class="atlas-layout">
+        <div class="glass-panel map-panel">
+          <div class="map-toolbar">
+            <span id="mapStatus">INTERACTIVE NETWORK</span>
+            <div class="map-buttons">
+              <button id="zoomOut" type="button" title="Zoom out">−</button>
+              <button id="zoomIn" type="button" title="Zoom in">＋</button>
+              <button id="resetMap" type="button" title="Reset map">⌖</button>
+            </div>
+          </div>
+          <div class="network-stage" id="networkStage">
+            <svg id="networkSvg"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 1000 650"
+              aria-label="Interactive gemstone relationship network">
+            </svg>
+            <div class="tree-stage" id="treeStage" hidden></div>
+          </div>
+          <div class="map-caption">
+            Drag the background to pan · Scroll or pinch to zoom ·
+            Tap nodes and lines to inspect
+          </div>
+        </div>
+
+        <aside class="glass-panel inspector-panel">
+          <div class="panel-eyebrow">CONNECTION INSPECTOR</div>
+          <h3 id="inspectorTitle">Explore relationships</h3>
+          <div id="inspectorContent" class="inspector-content">
+            Select a gemstone or an edge to investigate
+            why its connections exist.
+          </div>
+        </aside>
+      </div>
+
+      <div class="glass-panel path-panel">
+        <div class="panel-eyebrow">RELATIONSHIP INTELLIGENCE</div>
+        <h3>Connection Pathfinder</h3>
+        <p class="section-description">
+          Find a route between two gems using recorded
+          relationships and shared attributes.
+        </p>
+        <div class="path-controls">
+          <select id="pathFrom" aria-label="Starting gemstone"></select>
+          <span class="path-arrow">→</span>
+          <select id="pathTo" aria-label="Destination gemstone"></select>
+          <button class="primary-button" id="findPath"
+            type="button">Find Path</button>
+        </div>
+        <div id="pathResult" class="path-result"></div>
+      </div>
+    </section>
+
+    <!-- STATISTICS -->
+    <section class="view" id="view-statistics">
+      <div class="section-header">
+        <div>
+          <span class="eyebrow">THE STATISTICAL OBSERVATORY</span>
+          <h2>Patterns & Distributions</h2>
+        </div>
+      </div>
+
+      <p class="section-description">
+        Analyze occurrences, unique gemstone counts,
+        category overlaps and numerical properties.
+      </p>
+
+      <div class="glass-panel analysis-controls">
+        <div class="control-field">
+          <label for="statDimension">Primary category</label>
+          <select id="statDimension"></select>
+        </div>
+        <div class="control-field">
+          <label for="statMetric">Counting method</label>
+          <select id="statMetric">
+            <option value="gems">Distinct gemstones</option>
+            <option value="occurrences">Recorded occurrences</option>
+            <option value="percent">Percentage of collection</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="statChart">Chart</label>
+          <select id="statChart">
+            <option value="bar">Ranked Bars</option>
+            <option value="donut">Donut</option>
+            <option value="heatmap">Overlap Heatmap</option>
+            <option value="scatter">Numerical Scatterplot</option>
+          </select>
+        </div>
+        <div class="control-field">
+          <label for="statSecond">Second category / Y value</label>
+          <select id="statSecond"></select>
+        </div>
+      </div>
+
+      <div class="stats-layout">
+        <div class="glass-panel chart-panel">
+          <div class="chart-heading">
+            <div>
+              <div class="panel-eyebrow">COLLECTION ANALYSIS</div>
+              <h3 id="chartTitle">Distribution</h3>
+            </div>
+            <span class="chart-total" id="chartTotal"></span>
+          </div>
+          <div id="chartCanvas" class="chart-canvas"></div>
+        </div>
+        <aside class="glass-panel analysis-sidebar">
+          <div class="panel-eyebrow">OBSERVATIONS</div>
+          <h3>What the data shows</h3>
+          <div id="statInsights"></div>
+        </aside>
+      </div>
+      <div class="glass-panel data-panel">
+        <h3>Underlying Values</h3>
+        <div id="statTable" class="table-scroll"></div>
+      </div>
+    </section>
+
+    <!-- COMPARISON LAB -->
+    <section class="view" id="view-compare">
+      <div class="section-header">
+        <div>
+          <span class="eyebrow">THE COMPARISON LABORATORY</span>
+          <h2>Examine the Differences</h2>
+        </div>
+      </div>
+
+      <p class="section-description">
+        Compare up to four gemstones, inspect their complete
+        records and reveal the evidence behind their similarities.
+      </p>
+
+      <div class="glass-panel compare-chooser">
+        <div class="control-field">
+          <label for="comparePick">Add gemstone</label>
+          <select id="comparePick"></select>
+        </div>
+        <button class="primary-button" id="addCompare"
+          type="button">＋ Add to Comparison</button>
+        <button class="secondary-button" id="clearCompare"
+          type="button">Clear</button>
+      </div>
+
+      <div class="selected-gems" id="selectedGems"></div>
+
+      <div class="glass-panel weights-panel">
+        <div class="panel-eyebrow">SIMILARITY MODEL</div>
+        <h3>Relationship Weights</h3>
+        <p class="section-description">
+          Adjust how much each evidence category contributes.
+          These weights control the comparison score, not
+          the underlying scientific facts.
+        </p>
+        <div id="weightControls" class="weight-controls"></div>
+        <button class="text-button" id="resetWeights"
+          type="button">Restore default weights</button>
+      </div>
+
+      <div id="comparisonResults"></div>
+    </section>
+
+    <footer class="site-footer">
+      <span>◇ GEM ATLAS</span>
+      <span>KNOWLEDGE · CONNECTIONS · DISCOVERY</span>
+    </footer>
+
+  </main>
+</div>
+
+<!-- PROFILE -->
+<div class="modal-backdrop" id="profileBackdrop"
+  aria-hidden="true">
+  <section class="profile-modal" id="profileModal"
+    role="dialog" aria-modal="true" aria-label="Gemstone profile">
+    <div id="profileContent"></div>
+  </section>
+</div>
+
+<!-- EDITOR -->
+<div class="modal-backdrop editor-backdrop"
+  id="editorBackdrop" aria-hidden="true">
+  <section class="editor-modal" role="dialog"
+    aria-modal="true" aria-label="Gemstone editor">
+    <div class="editor-topbar">
+      <div>
+        <span class="editor-eyebrow">COLLECTION RECORD</span>
+        <h2 id="editorTitle">New Gemstone</h2>
+      </div>
+      <button class="icon-button close-button"
+        id="closeEditor" type="button">×</button>
+    </div>
+    <nav class="editor-tabs" id="editorTabs"></nav>
+    <form id="gemForm">
+      <div class="editor-scroll" id="editorFields"></div>
+      <div class="editor-footer">
+        <button class="secondary-button" id="cancelEditor"
+          type="button">Cancel</button>
+        <button class="primary-button" type="submit">
+          Save Gemstone ✧
         </button>
       </div>
+    </form>
+  </section>
+</div>
 
-    </header>
-
-    <!-- MAIN CONTENT -->
-    <main class="main-content">
-
-      <!-- INTRODUCTION -->
-      <section class="intro-section">
-
-        <div class="eyebrow">
-          <span class="eyebrow-line"></span>
-          A PERSONAL GEMOLOGICAL ARCHIVE
-        </div>
-
-        <div class="intro-heading">
-          <div>
-            <h1>The Gemstone <em>Library.</em></h1>
-            <p class="intro-description">
-              An evolving collection of mineral identities,
-              natural wonders, histories and hidden connections.
-            </p>
-          </div>
-
-          <div class="intro-decoration" aria-hidden="true">
-            <div class="gem-outline">◇</div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- STATISTICS SUMMARY -->
-      <section class="summary-grid" id="summaryGrid">
-
-        <div class="summary-card">
-          <span class="summary-label">GEMSTONES</span>
-          <strong id="statTotal">0</strong>
-          <span class="summary-sub">Registered specimens &amp; materials</span>
-        </div>
-
-        <div class="summary-card">
-          <span class="summary-label">MINERAL FAMILIES</span>
-          <strong id="statFamilies">0</strong>
-          <span class="summary-sub">Distinct mineral identities</span>
-        </div>
-
-        <div class="summary-card">
-          <span class="summary-label">RARITIES</span>
-          <strong id="statRare">0</strong>
-          <span class="summary-sub">Rare &amp; exotic entries</span>
-        </div>
-
-        <div class="summary-card">
-          <span class="summary-label">CONNECTIONS</span>
-          <strong id="statLinks">0</strong>
-          <span class="summary-sub">Shared mineral-family pairs</span>
-        </div>
-
-      </section>
-
-      <!-- LIBRARY -->
-      <section class="library-section">
-
-        <div class="section-header">
-
-          <div>
-            <div class="eyebrow small-eyebrow">
-              THE COLLECTION
-            </div>
-            <h2>Explore the Archive</h2>
-          </div>
-
-          <div class="library-count" id="libraryCount">
-            0 ENTRIES
-          </div>
-
-        </div>
-
-        <!-- FILTER TOOLBAR -->
-        <div class="library-toolbar">
-
-          <label class="search-field">
-            <span class="search-symbol">⌕</span>
-            <input
-              type="search"
-              id="searchInput"
-              placeholder="Search gems, minerals, colors, origins..."
-              autocomplete="off"
-            >
-          </label>
-
-          <div class="toolbar-selects">
-
-            <select id="rarityFilter" aria-label="Filter by rarity">
-              <option value="">All rarities</option>
-              <option value="Common">Common</option>
-              <option value="Uncommon">Uncommon</option>
-              <option value="Rare">Rare</option>
-              <option value="Exotic">Exotic</option>
-            </select>
-
-            <select id="classFilter" aria-label="Filter classification">
-              <option value="">All classifications</option>
-            </select>
-
-            <select id="sortFilter" aria-label="Sort collection">
-              <option value="name">Name A–Z</option>
-              <option value="name-desc">Name Z–A</option>
-              <option value="rarity">Rarity</option>
-              <option value="hardness">Mohs hardness</option>
-              <option value="newest">Recently added</option>
-              <option value="oldest">Oldest entries</option>
-            </select>
-
-          </div>
-
-        </div>
-
-        <!-- QUICK FILTERS -->
-        <div class="filter-strip">
-          <div class="quick-filters" id="quickFilters">
-            <button
-              class="filter-chip active"
-              type="button"
-              data-filter="all"
-            >All Gems</button>
-
-            <button
-              class="filter-chip"
-              type="button"
-              data-filter="favorites"
-            >♡ Favorites</button>
-
-            <button
-              class="filter-chip"
-              type="button"
-              data-filter="natural"
-            >Natural</button>
-
-            <button
-              class="filter-chip"
-              type="button"
-              data-filter="synthetic"
-            >Synthetic</button>
-
-            <button
-              class="filter-chip"
-              type="button"
-              data-filter="organic"
-            >Organic</button>
-          </div>
-
-          <button class="clear-filters" id="clearFilters" type="button">
-            Reset filters
-          </button>
-        </div>
-
-        <!-- GEMSTONE GRID -->
-        <div class="gem-grid" id="gemGrid"></div>
-
-        <!-- EMPTY STATE -->
-        <div class="empty-state" id="emptyState" hidden>
-          <div class="empty-gem">◇</div>
-          <h3>No gemstones found</h3>
-          <p>Change your filters or add a new gemstone.</p>
-          <button
-            class="secondary-button"
-            id="emptyAdd"
-            type="button"
-          >＋ Add Gemstone</button>
-        </div>
-
-      </section>
-
-      <footer class="site-footer">
-        <span>◇ GEM ATLAS</span>
-        <span>AN EVER-GROWING COLLECTION</span>
-      </footer>
-
-    </main>
-
-  </div>
-
-  <!-- GEMSTONE PROFILE MODAL -->
-  <div
-    class="modal-backdrop"
-    id="profileBackdrop"
-    aria-hidden="true"
-  >
-    <section
-      class="profile-modal"
-      id="profileModal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Gemstone profile"
-    >
-      <div id="profileContent"></div>
-    </section>
-  </div>
-
-  <!-- GEMSTONE EDITOR MODAL -->
-  <div
-    class="modal-backdrop editor-backdrop"
-    id="editorBackdrop"
-    aria-hidden="true"
-  >
-    <section
-      class="editor-modal"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Gemstone editor"
-    >
-
-      <div class="editor-topbar">
-        <div>
-          <span class="editor-eyebrow">COLLECTION RECORD</span>
-          <h2 id="editorTitle">New Gemstone</h2>
-        </div>
-
-        <button
-          class="icon-button close-button"
-          id="closeEditor"
-          type="button"
-          aria-label="Close editor"
-        >×</button>
-      </div>
-
-      <nav
-        class="editor-tabs"
-        id="editorTabs"
-        aria-label="Editor categories"
-      ></nav>
-
-      <form id="gemForm">
-        <div class="editor-scroll" id="editorFields"></div>
-
-        <div class="editor-footer">
-          <button
-            class="secondary-button"
-            id="cancelEditor"
-            type="button"
-          >Cancel</button>
-
-          <button
-            class="primary-button"
-            type="submit"
-          >Save Gemstone ✧</button>
-        </div>
-      </form>
-
-    </section>
-  </div>
-
-  <!-- CONFIRMATION MODAL -->
-  <div
-    class="modal-backdrop confirm-backdrop"
-    id="confirmBackdrop"
-    aria-hidden="true"
-  >
-    <div
-      class="confirm-dialog"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="confirmTitle"
-    >
-      <div class="confirm-symbol">◇</div>
-      <h2 id="confirmTitle">Delete this gemstone?</h2>
-      <p id="confirmMessage">
-        This record will be permanently removed.
-      </p>
-
-      <div class="confirm-actions">
-        <button
-          class="secondary-button"
-          id="cancelDelete"
-          type="button"
-        >Cancel</button>
-
-        <button
-          class="danger-button"
-          id="confirmDelete"
-          type="button"
-        >Delete</button>
-      </div>
+<!-- CONFIRMATION -->
+<div class="modal-backdrop confirm-backdrop"
+  id="confirmBackdrop" aria-hidden="true">
+  <div class="confirm-dialog" role="alertdialog"
+    aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="confirm-symbol">◇</div>
+    <h2 id="confirmTitle">Confirm action</h2>
+    <p id="confirmMessage"></p>
+    <div class="confirm-actions">
+      <button class="secondary-button" id="cancelDelete"
+        type="button">Cancel</button>
+      <button class="danger-button" id="confirmDelete"
+        type="button">Confirm</button>
     </div>
   </div>
+</div>
 
-  <!-- INFORMATION MODAL -->
-  <div
-    class="modal-backdrop confirm-backdrop"
-    id="aboutBackdrop"
-    aria-hidden="true"
-  >
-    <div class="confirm-dialog about-dialog">
-      <button
-        class="icon-button about-close"
-        id="closeAbout"
-        type="button"
-      >×</button>
+<div class="toast" id="toast" role="status"
+  aria-live="polite"></div>
 
-      <div class="confirm-symbol">◇</div>
-      <h2>Gem Atlas</h2>
-
-      <p>
-        A personal archive of gemstones, mineral varieties,
-        geological identities, history, symbolism and culture.
-      </p>
-
-      <p>
-        All changes are stored locally in your browser using
-        IndexedDB. This first version is an editable library.
-        Relationship maps and advanced comparisons will be
-        developed in future steps.
-      </p>
-
-      <p class="about-note">
-        Traditional and metaphysical associations are recorded
-        as cultural beliefs, not established medical facts.
-      </p>
-    </div>
-  </div>
-
-  <!-- TOAST NOTIFICATIONS -->
-  <div
-    class="toast"
-    id="toast"
-    role="status"
-    aria-live="polite"
-  ></div>
-
-  <!-- SCRIPTS -->
-  <script src="data.js"></script>
-  <script src="app.js"></script>
-
+<script src="data.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
