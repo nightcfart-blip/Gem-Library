@@ -3610,11 +3610,20 @@ function attachEvents() {
     event.target.value = "";
   };
 
-  $("#openAbout").onclick = () =>
-    openLayer("#aboutBackdrop");
+  const aboutButton = $("#openAbout");
+const closeAboutButton = $("#closeAbout");
 
-  $("#closeAbout").onclick = () =>
+if (aboutButton) {
+  aboutButton.addEventListener("click", () => {
+    openLayer("#aboutBackdrop");
+  });
+}
+
+if (closeAboutButton) {
+  closeAboutButton.addEventListener("click", () => {
     closeLayer("#aboutBackdrop");
+  });
+}
 
   $$(".main-tab").forEach(tab => {
     tab.onclick = () => switchView(tab.dataset.view);
