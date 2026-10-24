@@ -1,1 +1,392 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
+
+  <meta name="theme-color" content="#080b13">
+
+  <title>Gem Atlas — A Living Gemstone Encyclopedia</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <div class="app-shell">
+
+    <!-- BACKGROUND DECORATION -->
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <div class="ambient ambient-three"></div>
+
+    <!-- TOP HEADER -->
+    <header class="topbar">
+
+      <div class="brand" id="brandHome" role="button" tabindex="0">
+        <span class="brand-icon">◇</span>
+
+        <div class="brand-copy">
+          <strong>GEM ATLAS</strong>
+          <small>THE LIVING COLLECTION</small>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <button
+          class="icon-button"
+          id="openAbout"
+          type="button"
+          aria-label="About Gem Atlas"
+          title="About this collection"
+        >ⓘ</button>
+
+        <button
+          class="primary-button header-add"
+          id="headerAdd"
+          type="button"
+        >
+          <span>＋</span>
+          <span>New Gem</span>
+        </button>
+      </div>
+
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+      <!-- INTRODUCTION -->
+      <section class="intro-section">
+
+        <div class="eyebrow">
+          <span class="eyebrow-line"></span>
+          A PERSONAL GEMOLOGICAL ARCHIVE
+        </div>
+
+        <div class="intro-heading">
+          <div>
+            <h1>The Gemstone <em>Library.</em></h1>
+            <p class="intro-description">
+              An evolving collection of mineral identities,
+              natural wonders, histories and hidden connections.
+            </p>
+          </div>
+
+          <div class="intro-decoration" aria-hidden="true">
+            <div class="gem-outline">◇</div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- STATISTICS SUMMARY -->
+      <section class="summary-grid" id="summaryGrid">
+
+        <div class="summary-card">
+          <span class="summary-label">GEMSTONES</span>
+          <strong id="statTotal">0</strong>
+          <span class="summary-sub">Registered specimens &amp; materials</span>
+        </div>
+
+        <div class="summary-card">
+          <span class="summary-label">MINERAL FAMILIES</span>
+          <strong id="statFamilies">0</strong>
+          <span class="summary-sub">Distinct mineral identities</span>
+        </div>
+
+        <div class="summary-card">
+          <span class="summary-label">RARITIES</span>
+          <strong id="statRare">0</strong>
+          <span class="summary-sub">Rare &amp; exotic entries</span>
+        </div>
+
+        <div class="summary-card">
+          <span class="summary-label">CONNECTIONS</span>
+          <strong id="statLinks">0</strong>
+          <span class="summary-sub">Shared mineral-family pairs</span>
+        </div>
+
+      </section>
+
+      <!-- LIBRARY -->
+      <section class="library-section">
+
+        <div class="section-header">
+
+          <div>
+            <div class="eyebrow small-eyebrow">
+              THE COLLECTION
+            </div>
+            <h2>Explore the Archive</h2>
+          </div>
+
+          <div class="library-count" id="libraryCount">
+            0 ENTRIES
+          </div>
+
+        </div>
+
+        <!-- FILTER TOOLBAR -->
+        <div class="library-toolbar">
+
+          <label class="search-field">
+            <span class="search-symbol">⌕</span>
+            <input
+              type="search"
+              id="searchInput"
+              placeholder="Search gems, minerals, colors, origins..."
+              autocomplete="off"
+            >
+          </label>
+
+          <div class="toolbar-selects">
+
+            <select id="rarityFilter" aria-label="Filter by rarity">
+              <option value="">All rarities</option>
+              <option value="Common">Common</option>
+              <option value="Uncommon">Uncommon</option>
+              <option value="Rare">Rare</option>
+              <option value="Exotic">Exotic</option>
+            </select>
+
+            <select id="classFilter" aria-label="Filter classification">
+              <option value="">All classifications</option>
+            </select>
+
+            <select id="sortFilter" aria-label="Sort collection">
+              <option value="name">Name A–Z</option>
+              <option value="name-desc">Name Z–A</option>
+              <option value="rarity">Rarity</option>
+              <option value="hardness">Mohs hardness</option>
+              <option value="newest">Recently added</option>
+              <option value="oldest">Oldest entries</option>
+            </select>
+
+          </div>
+
+        </div>
+
+        <!-- QUICK FILTERS -->
+        <div class="filter-strip">
+          <div class="quick-filters" id="quickFilters">
+            <button
+              class="filter-chip active"
+              type="button"
+              data-filter="all"
+            >All Gems</button>
+
+            <button
+              class="filter-chip"
+              type="button"
+              data-filter="favorites"
+            >♡ Favorites</button>
+
+            <button
+              class="filter-chip"
+              type="button"
+              data-filter="natural"
+            >Natural</button>
+
+            <button
+              class="filter-chip"
+              type="button"
+              data-filter="synthetic"
+            >Synthetic</button>
+
+            <button
+              class="filter-chip"
+              type="button"
+              data-filter="organic"
+            >Organic</button>
+          </div>
+
+          <button class="clear-filters" id="clearFilters" type="button">
+            Reset filters
+          </button>
+        </div>
+
+        <!-- GEMSTONE GRID -->
+        <div class="gem-grid" id="gemGrid"></div>
+
+        <!-- EMPTY STATE -->
+        <div class="empty-state" id="emptyState" hidden>
+          <div class="empty-gem">◇</div>
+          <h3>No gemstones found</h3>
+          <p>Change your filters or add a new gemstone.</p>
+          <button
+            class="secondary-button"
+            id="emptyAdd"
+            type="button"
+          >＋ Add Gemstone</button>
+        </div>
+
+      </section>
+
+      <footer class="site-footer">
+        <span>◇ GEM ATLAS</span>
+        <span>AN EVER-GROWING COLLECTION</span>
+      </footer>
+
+    </main>
+
+  </div>
+
+  <!-- GEMSTONE PROFILE MODAL -->
+  <div
+    class="modal-backdrop"
+    id="profileBackdrop"
+    aria-hidden="true"
+  >
+    <section
+      class="profile-modal"
+      id="profileModal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Gemstone profile"
+    >
+      <div id="profileContent"></div>
+    </section>
+  </div>
+
+  <!-- GEMSTONE EDITOR MODAL -->
+  <div
+    class="modal-backdrop editor-backdrop"
+    id="editorBackdrop"
+    aria-hidden="true"
+  >
+    <section
+      class="editor-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Gemstone editor"
+    >
+
+      <div class="editor-topbar">
+        <div>
+          <span class="editor-eyebrow">COLLECTION RECORD</span>
+          <h2 id="editorTitle">New Gemstone</h2>
+        </div>
+
+        <button
+          class="icon-button close-button"
+          id="closeEditor"
+          type="button"
+          aria-label="Close editor"
+        >×</button>
+      </div>
+
+      <nav
+        class="editor-tabs"
+        id="editorTabs"
+        aria-label="Editor categories"
+      ></nav>
+
+      <form id="gemForm">
+        <div class="editor-scroll" id="editorFields"></div>
+
+        <div class="editor-footer">
+          <button
+            class="secondary-button"
+            id="cancelEditor"
+            type="button"
+          >Cancel</button>
+
+          <button
+            class="primary-button"
+            type="submit"
+          >Save Gemstone ✧</button>
+        </div>
+      </form>
+
+    </section>
+  </div>
+
+  <!-- CONFIRMATION MODAL -->
+  <div
+    class="modal-backdrop confirm-backdrop"
+    id="confirmBackdrop"
+    aria-hidden="true"
+  >
+    <div
+      class="confirm-dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="confirmTitle"
+    >
+      <div class="confirm-symbol">◇</div>
+      <h2 id="confirmTitle">Delete this gemstone?</h2>
+      <p id="confirmMessage">
+        This record will be permanently removed.
+      </p>
+
+      <div class="confirm-actions">
+        <button
+          class="secondary-button"
+          id="cancelDelete"
+          type="button"
+        >Cancel</button>
+
+        <button
+          class="danger-button"
+          id="confirmDelete"
+          type="button"
+        >Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- INFORMATION MODAL -->
+  <div
+    class="modal-backdrop confirm-backdrop"
+    id="aboutBackdrop"
+    aria-hidden="true"
+  >
+    <div class="confirm-dialog about-dialog">
+      <button
+        class="icon-button about-close"
+        id="closeAbout"
+        type="button"
+      >×</button>
+
+      <div class="confirm-symbol">◇</div>
+      <h2>Gem Atlas</h2>
+
+      <p>
+        A personal archive of gemstones, mineral varieties,
+        geological identities, history, symbolism and culture.
+      </p>
+
+      <p>
+        All changes are stored locally in your browser using
+        IndexedDB. This first version is an editable library.
+        Relationship maps and advanced comparisons will be
+        developed in future steps.
+      </p>
+
+      <p class="about-note">
+        Traditional and metaphysical associations are recorded
+        as cultural beliefs, not established medical facts.
+      </p>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATIONS -->
+  <div
+    class="toast"
+    id="toast"
+    role="status"
+    aria-live="polite"
+  ></div>
+
+  <!-- SCRIPTS -->
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+
+</body>
+</html>
