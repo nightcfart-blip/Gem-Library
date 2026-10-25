@@ -2023,6 +2023,26 @@ function formatFieldValue(gem, field) {
     return `<span class="empty-note">Not specified</span>`;
   }
 
+/* Display optional multiple answers */
+
+if (
+  isFlexibleField(field) &&
+  Array.isArray(value)
+) {
+
+  return `
+    <div class="tags flexible-profile-tags">
+
+      ${value.map(item => `
+        <span class="tag">
+          ${escapeHTML(item)}
+        </span>
+      `).join("")}
+
+    </div>
+  `;
+}
+   
   if (field.type === "number") {
     return escapeHTML(formatNumber(value, 5));
   }
