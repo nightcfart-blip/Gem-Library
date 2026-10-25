@@ -2381,7 +2381,7 @@ function compareField(field, valueA, valueB) {
       score: null,
       status: "unknown"
     };
-
+  }
 
 /* Optional multiple answers */
 
