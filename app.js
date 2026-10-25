@@ -3646,18 +3646,34 @@ function buildDistribution(gems,key) {
 
 }
 
+
+function numericValues(gem,key) {
+
+  const raw = gem[key];
+
+  const values =
+    Array.isArray(raw)
+      ? raw
+      : [raw];
+
+  return values
+    .filter(item =>
+      item !== null &&
+      item !== undefined &&
+      String(item).trim() !== ""
+    )
+    .map(Number)
+    .filter(Number.isFinite);
+}
+   
+
 function buildNumericDistribution(gems,key) {
 
-  const numbers = gems
-    .map(gem => gem[key])
-    .filter(value =>
-      value !== null &&
-      value !== undefined &&
-      Number.isFinite(Number(value))
-    )
-    .map(Number);
+  const allNumbers = gems.flatMap(
+    gem => numericValues(gem,key)
+  );
 
-  if (!numbers.length) return [];
+  if (!allNumbers.length) return [];
 
   const definition = CFG.numericDimensions.find(
     item => item.key === key
@@ -3667,18 +3683,19 @@ function buildNumericDistribution(gems,key) {
 
   if (!bounds) {
 
-    const minimum = Math.min(...numbers);
-    const maximum = Math.max(...numbers);
+    const minimum = Math.min(...allNumbers);
+    const maximum = Math.max(...allNumbers);
 
     if (minimum === maximum) {
 
+      const members = gems.filter(gem =>
+        numericValues(gem,key).includes(minimum)
+      );
+
       return [{
         label:formatNumber(minimum,4),
-        value:numbers.length,
-        gemIds:gems
-          .filter(gem => gem[key] !== null &&
-            Number(gem[key]) === minimum)
-          .map(gem => gem.id)
+        value:members.length,
+        gemIds:members.map(gem => gem.id)
       }];
 
     }
@@ -3696,22 +3713,21 @@ function buildNumericDistribution(gems,key) {
   return bounds.slice(0,-1).map((lower,index) => {
 
     const upper = bounds[index+1];
-    const isLast = index === bounds.length-2;
+
+    const isLast =
+      index === bounds.length-2;
 
     const members = gems.filter(gem => {
 
-      const value = gem[key];
+      return numericValues(gem,key).some(number =>
 
-      if (
-        value === null ||
-        value === undefined ||
-        !Number.isFinite(Number(value))
-      ) return false;
+        number >= lower &&
+        (
+          number < upper ||
+          (isLast && number <= upper)
+        )
 
-      const number = Number(value);
-
-      return number >= lower &&
-        (number < upper || (isLast && number <= upper));
+      );
 
     });
 
@@ -3731,27 +3747,27 @@ function buildNumericDistribution(gems,key) {
 function numericSummary(gems,key) {
 
   const values = gems
-    .map(gem => gem[key])
-    .filter(value =>
-      value !== null &&
-      value !== undefined &&
-      Number.isFinite(Number(value))
-    )
-    .map(Number)
+    .flatMap(gem => numericValues(gem,key))
     .sort((a,b) => a-b);
 
   if (!values.length) return null;
 
   const sum = values.reduce(
-    (total,value) => total+value,0
+    (total,value) => total+value,
+    0
   );
 
-  const midpoint = Math.floor(values.length/2);
+  const midpoint = Math.floor(
+    values.length/2
+  );
 
   const median =
     values.length % 2
       ? values[midpoint]
-      : (values[midpoint-1]+values[midpoint])/2;
+      : (
+          values[midpoint-1] +
+          values[midpoint]
+        )/2;
 
   return {
     count:values.length,
@@ -3760,7 +3776,6 @@ function numericSummary(gems,key) {
     min:values[0],
     max:values[values.length-1]
   };
-
 }
 
 function buildCrossAnalysis(gems,keyA,keyB) {
