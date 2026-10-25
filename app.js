@@ -5312,50 +5312,96 @@ function initializeEvents() {
     submitEditor
   );
 
-  $("#gem-form").addEventListener(
-    "input",
-    event => {
 
-      if (
-        event.target.name &&
-        !event.target.matches('[type="checkbox"]')
-      ) {
-        updateDraftField(event.target);
-      }
+$("#gem-form").addEventListener(
+  "input",
+  event => {
 
+    const input = event.target;
+
+    if (input.dataset.flexSingle) {
+
+      updateFlexibleSingle(input);
+      return;
     }
-  );
 
-  $("#gem-form").addEventListener(
-    "change",
-    event => {
-
-      if (event.target.name) {
-        updateDraftField(event.target);
-      }
-
+    if (
+      input.name &&
+      !input.matches('[type="checkbox"]')
+    ) {
+      updateDraftField(input);
     }
-  );
 
-  $("#gem-form").addEventListener(
-    "keydown",
-    event => {
+  }
+);
 
-      const input = event.target.closest(
-        "[data-tag-input]"
+
+$("#gem-form").addEventListener(
+  "change",
+  event => {
+
+    const input = event.target;
+
+    if (input.dataset.flexToggle) {
+
+      toggleFlexibleField(
+        input.dataset.flexToggle,
+        input.checked
       );
 
-      if (input && event.key === "Enter") {
+      return;
+    }
 
-        event.preventDefault();
+    if (input.dataset.flexSingle) {
 
-        addTag(input.dataset.tagInput);
+      updateFlexibleSingle(input);
+      return;
+    }
 
-      }
+    if (input.name) {
+      updateDraftField(input);
+    }
+
+  }
+);
+
+
+  
+$("#gem-form").addEventListener(
+  "keydown",
+  event => {
+
+    if (event.key !== "Enter") return;
+
+    const tagInput = event.target.closest(
+      "[data-tag-input]"
+    );
+
+    if (tagInput) {
+
+      event.preventDefault();
+
+      addTag(tagInput.dataset.tagInput);
+
+      return;
+    }
+
+    const flexibleInput = event.target.closest(
+      "[data-flex-input]"
+    );
+
+    if (flexibleInput) {
+
+      event.preventDefault();
+
+      addFlexibleValue(
+        flexibleInput.dataset.flexInput
+      );
 
     }
-  );
 
+  }
+);
 
   // Central changes
 
