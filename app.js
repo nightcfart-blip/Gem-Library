@@ -1531,6 +1531,28 @@ function submitEditor(event) {
 
   }
 
+
+/* Include any answer not yet added */
+
+for (const input of document.querySelectorAll(
+  "[data-flex-input]"
+)) {
+
+  if (!input.value.trim()) continue;
+
+  const added = addFlexibleValue(
+    input.dataset.flexInput
+  );
+
+  if (added === false) return;
+}
+
+/* Validate flexible fields */
+
+if (!validateFlexibleFields()) {
+  return;
+}
+   
   const saved = saveGem(state.draft);
 
   if (!saved) return;
