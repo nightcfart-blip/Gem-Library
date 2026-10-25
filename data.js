@@ -489,6 +489,7 @@ function createEmptyGem() {
    RECORD NORMALIZATION
 ========================================= */
 
+
 function normalizeGem(input) {
 
   const base = createEmptyGem();
@@ -503,33 +504,28 @@ function normalizeGem(input) {
 
   const gem = {
     ...base,
-
-    id:
-      typeof input.id === "string"
-        ? input.id
-        : "",
-
+    id: typeof input.id === "string" ? input.id : "",
     createdAt:
       typeof input.createdAt === "string"
-        ? input.createdAt
-        : "",
-
+        ? input.createdAt : "",
     updatedAt:
       typeof input.updatedAt === "string"
-        ? input.updatedAt
-        : ""
+        ? input.updatedAt : ""
   };
+
+  const listTypes = [
+    "tags",
+    "multi",
+    "bullets",
+    "links"
+  ];
 
   for (const field of GEM_CONFIG.fields) {
 
     const value = input[field.key];
 
-    if (
-      field.type === "tags" ||
-      field.type === "multi" ||
-      field.type === "bullets" ||
-      field.type === "links"
-    ) {
+    // Fields that are always lists.
+    if (listTypes.includes(field.type)) {
 
       gem[field.key] = Array.isArray(value)
         ? [...new Set(
@@ -540,29 +536,67 @@ function normalizeGem(input) {
           )]
         : [];
 
+      continue;
     }
 
-    else if (field.type === "number") {
+    // Optional multi-answer numerical fields.
+    if (field.type === "number") {
 
-      if (
-        value === null ||
-        value === undefined ||
-        value === ""
-      ) {
-        gem[field.key] = null;
-      }
+      const convert = item => {
 
-      else {
-        const number = Number(value);
+        if (
+          item === null ||
+          item === undefined ||
+          String(item).trim() === ""
+        ) {
+          return null;
+        }
 
-        gem[field.key] = Number.isFinite(number)
+        const number = Number(item);
+
+        return Number.isFinite(number)
           ? number
           : null;
+      };
+
+      if (Array.isArray(value)) {
+
+        gem[field.key] = [
+          ...new Set(
+            value.map(convert)
+              .filter(item => item !== null)
+          )
+        ];
+
+      } else {
+        gem[field.key] = convert(value);
       }
 
+      continue;
     }
 
-    else {
+    // Optional multi-answer text fields.
+    if (Array.isArray(value)) {
+
+      const seen = new Set();
+
+      gem[field.key] = value
+        .filter(item => typeof item === "string")
+        .map(item => item.trim())
+        .filter(item => {
+
+          if (!item) return false;
+
+          const key = item.toLocaleLowerCase();
+
+          if (seen.has(key)) return false;
+
+          seen.add(key);
+          return true;
+
+        });
+
+    } else {
 
       gem[field.key] =
         typeof value === "string"
@@ -575,7 +609,6 @@ function normalizeGem(input) {
 
   return gem;
 }
-
 
 /* =========================================
    GLOBAL EXPORT
