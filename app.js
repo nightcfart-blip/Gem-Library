@@ -701,10 +701,437 @@ function renderEditorFields() {
 
 }
 
+
+/* =========================================
+   OPTIONAL MULTIPLE-ANSWER FIELDS
+========================================= */
+
+function isFlexibleField(field) {
+  return ["text", "number", "textarea"]
+    .includes(field.type);
+}
+
+function flexibleValues(key) {
+
+  const value = state.draft?.[key];
+
+  if (Array.isArray(value)) return value;
+
+  if (!hasValue(value)) return [];
+
+  return [value];
+}
+
+function validFlexibleNumber(field, raw) {
+
+  const text = String(raw).trim();
+
+  if (!text) return null;
+
+  const number = Number(text);
+
+  if (!Number.isFinite(number)) return null;
+
+  if (
+    field.min !== undefined &&
+    number < field.min
+  ) return null;
+
+  if (
+    field.max !== undefined &&
+    number > field.max
+  ) return null;
+
+  if (
+    field.step === "1" &&
+    !Number.isInteger(number)
+  ) return null;
+
+  return number;
+}
+
+function renderFlexibleField(field) {
+
+  const key = field.key;
+  const value = state.draft[key];
+  const multiple = Array.isArray(value);
+
+  const values = flexibleValues(key);
+
+  let control = "";
+
+  if (multiple) {
+
+    control = `
+
+      <div class="flexible-values">
+
+        ${values.map((item,index) => `
+
+          <span class="flexible-chip">
+
+            <span>${escapeHTML(item)}</span>
+
+            <button
+              type="button"
+              data-action="remove-flex"
+              data-field="${key}"
+              data-index="${index}"
+              aria-label="Remove answer">
+              ×
+            </button>
+
+          </span>
+
+        `).join("")}
+
+      </div>
+
+      <div class="flexible-entry">
+
+        <input
+          class="input"
+          type="text"
+          inputmode="text"
+          autocomplete="off"
+          spellcheck="false"
+          data-flex-input="${key}"
+          placeholder="Add another answer...">
+
+        <button
+          type="button"
+          class="button button-secondary button-small"
+          data-action="add-flex"
+          data-field="${key}">
+          Add
+        </button>
+
+      </div>
+
+    `;
+
+  } else {
+
+    if (field.type === "textarea") {
+
+      control = `
+
+        <textarea
+          class="textarea"
+          name="${key}"
+          data-flex-single="${key}"
+          placeholder="Write here...">${escapeHTML(value ?? "")}</textarea>
+
+      `;
+
+    } else {
+
+      control = `
+
+        <input
+          class="input"
+          type="text"
+          name="${key}"
+          data-flex-single="${key}"
+          inputmode="text"
+          autocomplete="off"
+          value="${escapeAttr(value ?? "")}"
+          ${field.required ? "required" : ""}
+          placeholder="—">
+
+      `;
+
+    }
+
+  }
+
+  return `
+
+    <div
+      class="field flexible-field ${
+        field.wide ? "form-wide" : ""
+      }"
+      data-flex-field="${key}">
+
+      <div class="flexible-heading">
+
+        <label>
+          ${escapeHTML(field.label)}
+          ${field.required ? "*" : ""}
+        </label>
+
+        <label class="flexible-toggle">
+
+          <input
+            type="checkbox"
+            data-flex-toggle="${key}"
+            ${multiple ? "checked" : ""}>
+
+          <span>Multiple</span>
+
+        </label>
+
+      </div>
+
+      ${control}
+
+    </div>
+
+  `;
+
+}
+
+function refreshFlexibleField(key) {
+
+  const field = CFG.fieldMap[key];
+
+  if (!field) return;
+
+  const current = document.querySelector(
+    `[data-flex-field="${key}"]`
+  );
+
+  if (!current) return;
+
+  current.outerHTML = renderFlexibleField(field);
+
+  queueDraftSave();
+}
+
+function toggleFlexibleField(key, enabled) {
+
+  const field = CFG.fieldMap[key];
+
+  if (!field || !isFlexibleField(field)) return;
+
+  const current = state.draft[key];
+
+  if (enabled) {
+
+    state.draft[key] =
+      Array.isArray(current)
+        ? [...current]
+        : hasValue(current)
+          ? [current]
+          : [];
+
+  } else {
+
+    const values = flexibleValues(key);
+
+    state.draft[key] =
+      values.length
+        ? values[0]
+        : field.type === "number"
+          ? null
+          : "";
+
+    if (values.length > 1) {
+
+      toast(
+        "Single-answer mode keeps the first value."
+      );
+
+    }
+
+  }
+
+  refreshFlexibleField(key);
+}
+
+function addFlexibleValue(key) {
+
+  const field = CFG.fieldMap[key];
+
+  if (!field || !isFlexibleField(field)) return;
+
+  const input = document.querySelector(
+    `[data-flex-input="${key}"]`
+  );
+
+  if (!input) return;
+
+  const raw = input.value.trim();
+
+  if (!raw) return;
+
+  let value = raw;
+
+  if (field.type === "number") {
+
+    value = validFlexibleNumber(field, raw);
+
+    if (value === null) {
+
+      toast(
+        `Enter a valid number for ${field.label}.`
+      );
+
+      input.focus();
+      return false;
+    }
+
+  }
+
+  const values = flexibleValues(key);
+
+  const exists = values.some(item =>
+    String(item).toLocaleLowerCase() ===
+    String(value).toLocaleLowerCase()
+  );
+
+  if (!exists) {
+
+    state.draft[key] = [...values, value];
+
+  }
+
+  input.value = "";
+
+  refreshFlexibleField(key);
+
+  document.querySelector(
+    `[data-flex-input="${key}"]`
+  )?.focus();
+
+  return true;
+}
+
+function removeFlexibleValue(key,index) {
+
+  const current = flexibleValues(key);
+
+  current.splice(index,1);
+
+  state.draft[key] = current;
+
+  refreshFlexibleField(key);
+}
+
+function updateFlexibleSingle(input) {
+
+  const key = input.dataset.flexSingle;
+
+  const field = CFG.fieldMap[key];
+
+  if (!field || !state.draft) return;
+
+  // Keep raw text while editing.
+  // Convert and validate when saving.
+  state.draft[key] = input.value;
+
+  const status = document.querySelector(
+    "#editor-status"
+  );
+
+  if (status) {
+    status.textContent = "Unsaved changes";
+  }
+
+  queueDraftSave();
+}
+
+function validateFlexibleFields() {
+
+  for (const field of CFG.fields) {
+
+    if (!isFlexibleField(field)) continue;
+
+    const value = state.draft[field.key];
+
+    if (
+      field.required &&
+      !hasValue(value)
+    ) {
+
+      toast(`${field.label} is required.`);
+
+      return false;
+    }
+
+    if (field.type !== "number") continue;
+
+    // Multiple numerical answers.
+    if (Array.isArray(value)) {
+
+      const numbers = [];
+
+      for (const item of value) {
+
+        const number = validFlexibleNumber(
+          field,
+          item
+        );
+
+        if (number === null) {
+
+          toast(
+            `Invalid number in ${field.label}.`
+          );
+
+          return false;
+        }
+
+        numbers.push(number);
+      }
+
+      state.draft[field.key] = [
+        ...new Set(numbers)
+      ];
+
+      continue;
+    }
+
+    // Single numerical answer.
+    if (!hasValue(value)) {
+
+      state.draft[field.key] = null;
+      continue;
+    }
+
+    const number = validFlexibleNumber(
+      field,
+      value
+    );
+
+    if (number === null) {
+
+      const input = document.querySelector(
+        `[data-flex-single="${field.key}"]`
+      );
+
+      if (input) {
+
+        const section = input.closest("details");
+
+        if (section) section.open = true;
+
+        input.focus();
+
+      }
+
+      toast(
+        `Invalid number in ${field.label}.`
+      );
+
+      return false;
+    }
+
+    state.draft[field.key] = number;
+
+  }
+
+  return true;
+}
+
 function renderInputField(field) {
 
   const value = state.draft[field.key];
-
+   
+if (isFlexibleField(field)) {
+  return renderFlexibleField(field);
+}
+   
   let input = "";
 
   if (field.type === "text") {
