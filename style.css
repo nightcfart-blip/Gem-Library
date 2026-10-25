@@ -2116,3 +2116,402 @@ input[type="checkbox"] {
   background: #48564a;
   border-radius: 8px;
 }
+
+
+/* =========================================
+   GEM LIBRARY V2
+   COMPACT PROFILE & EDITOR REDESIGN
+========================================= */
+
+/* PROFILE TOOLBAR */
+
+.sheet-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 15px;
+}
+
+/* MAIN SHEET */
+
+.gem-sheet {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  overflow: hidden;
+}
+
+/* PROFILE HEADER */
+
+.sheet-header {
+  padding: 28px 30px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet-header h1 {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -.8px;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.sheet-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 5px;
+}
+
+.sheet-header-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.sheet-header-tags:empty {
+  display: none;
+}
+
+/* TWO COLUMN SHEET */
+
+.sheet-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0,1fr)
+    minmax(0,1fr);
+}
+
+.sheet-column {
+  padding: 0 25px 18px;
+  min-width: 0;
+}
+
+.sheet-column:first-child {
+  border-right: 1px solid var(--border);
+}
+
+/* SECTION HEADINGS */
+
+.sheet-section {
+  padding: 22px 0 5px;
+}
+
+.sheet-section + .sheet-section {
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+.sheet-section-heading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.15px;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 13px;
+}
+
+/* COMPACT INFORMATION ROWS */
+
+.sheet-rows {
+  display: grid;
+  gap: 0;
+}
+
+.sheet-row {
+  display: grid;
+  grid-template-columns:
+    minmax(100px, 38%)
+    minmax(0,1fr);
+  gap: 13px;
+  align-items: baseline;
+  padding: 7px 0;
+}
+
+.sheet-row + .sheet-row {
+  border-top: 1px solid rgba(130,150,130,.09);
+}
+
+.sheet-label {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.sheet-value {
+  font-size: 12px;
+  line-height: 1.6;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.sheet-value .tags {
+  gap: 4px;
+}
+
+.sheet-value .tag {
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 5px;
+}
+
+.sheet-value .profile-list {
+  margin: 0;
+  padding-left: 15px;
+}
+
+.sheet-value .profile-list li {
+  margin-bottom: 4px;
+}
+
+/* NOTES */
+
+.sheet-notes {
+  padding: 22px 30px 25px;
+  border-top: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.sheet-notes .profile-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.sheet-notes li {
+  margin-bottom: 5px;
+}
+
+/* FOOTER */
+
+.sheet-footer {
+  border-top: 1px solid var(--border);
+  background: var(--surface-alt);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* =========================================
+   EDITOR REFINEMENT
+========================================= */
+
+.editor-dialog {
+  max-width: 820px;
+}
+
+/* Compact top and bottom */
+
+.dialog-header {
+  padding: 17px 23px 14px;
+}
+
+.dialog-footer {
+  padding: 12px 23px;
+}
+
+.editor-scroll {
+  padding: 15px 23px 21px;
+}
+
+/* Sections */
+
+.editor-section {
+  margin-bottom: 9px;
+  border-color: var(--border);
+  border-radius: 9px;
+}
+
+.editor-section summary {
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .1px;
+}
+
+.editor-section[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.editor-section-content {
+  padding: 16px;
+}
+
+/* Tighter field grid */
+
+.editor-section .form-grid {
+  gap: 12px 15px;
+}
+
+.editor-section .field {
+  gap: 5px;
+}
+
+.editor-section .field label {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+/* Input sizing */
+
+.editor-section .input,
+.editor-section .select {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.editor-section .textarea {
+  padding: 9px 10px;
+  font-size: 12px;
+  min-height: 75px;
+  border-radius: 6px;
+}
+
+/* Classifications */
+
+.editor-section .check-options {
+  gap: 6px;
+}
+
+.editor-section .check-option {
+  padding: 6px 9px;
+  font-size: 10px;
+  border-radius: 6px;
+}
+
+/* Tags */
+
+.editor-section .tag-editor {
+  gap: 6px;
+}
+
+.editor-section .tag-editor-input {
+  gap: 6px;
+}
+
+.editor-section .tag-editor-input .button {
+  min-height: 36px;
+  padding: 7px 12px;
+}
+
+.editor-section .tag {
+  font-size: 10px;
+  padding: 3px 7px;
+}
+
+/* =========================================
+   MOBILE
+========================================= */
+
+@media (max-width: 760px) {
+
+  .sheet-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sheet-column {
+    padding: 0 18px 8px;
+  }
+
+  .sheet-column:first-child {
+    border-right: 0;
+  }
+
+  .sheet-column + .sheet-column {
+    border-top: 1px solid var(--border);
+  }
+
+  .sheet-header {
+    padding: 23px 19px 19px;
+  }
+
+  .sheet-header h1 {
+    font-size: 27px;
+  }
+
+  .sheet-section {
+    padding-top: 19px;
+  }
+
+  .sheet-row {
+    grid-template-columns:
+      minmax(90px,36%)
+      minmax(0,1fr);
+    gap: 10px;
+    padding: 8px 0;
+  }
+
+  .sheet-label {
+    font-size: 11px;
+  }
+
+  .sheet-value {
+    font-size: 12px;
+  }
+
+  .sheet-notes {
+    padding: 20px 19px;
+  }
+
+  .sheet-footer {
+    padding: 12px 16px;
+  }
+
+  .sheet-toolbar {
+    gap: 8px;
+  }
+
+  .sheet-toolbar .page-actions {
+    gap: 5px;
+  }
+
+  .sheet-toolbar .button {
+    font-size: 10px;
+    padding: 6px 9px;
+  }
+
+  .editor-dialog {
+    max-width: none;
+  }
+
+  .dialog-header {
+    padding: 15px 17px;
+  }
+
+  .editor-scroll {
+    padding: 12px;
+  }
+
+  .editor-section-content {
+    padding: 13px;
+  }
+
+  /* Keep the editor as one column on phones */
+
+  .editor-section .form-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+}
+
+/* Prevent tiny values from stretching the layout */
+
+.sheet-row,
+.sheet-value,
+.sheet-column,
+.gem-sheet {
+  min-width: 0;
+}
+
