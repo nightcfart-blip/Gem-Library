@@ -2362,6 +2362,43 @@ function compareField(field, valueA, valueB) {
       status: "unknown"
     };
 
+
+/* Optional multiple answers */
+
+if (
+  isFlexibleField(field) &&
+  (
+    Array.isArray(valueA) ||
+    Array.isArray(valueB)
+  )
+) {
+
+  const a = normalizedSet(valueA);
+  const b = normalizedSet(valueB);
+
+  const union = new Set([...a,...b]);
+
+  let matches = 0;
+
+  for (const item of a) {
+    if (b.has(item)) matches++;
+  }
+
+  const score = union.size
+    ? matches / union.size
+    : 0;
+
+  return {
+    comparable: true,
+    score,
+    status:
+      score >= .999999
+        ? "match"
+        : score <= .000001
+          ? "different"
+          : "partial"
+  };
+     
   }
 
   let score = 0;
