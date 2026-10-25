@@ -1777,3 +1777,342 @@ button {
     transition: none !important;
   }
 }
+
+
+/* =========================================
+   GEM LIBRARY V2 — DARK MODE
+   Paste at the END of style.css
+========================================= */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #121514;
+  --surface: #1b1f1d;
+  --surface-alt: #252a27;
+  --surface-hover: #303630;
+
+  --text: #e9ede8;
+  --muted: #a2aaa2;
+  --subtle: #778279;
+
+  --border: #333a35;
+  --border-dark: #48534b;
+
+  --accent: #a6bba1;
+  --accent-hover: #bed0b8;
+  --accent-soft: #303d32;
+
+  --danger: #db8888;
+  --danger-soft: #422b2e;
+
+  --success: #a4c8a5;
+  --success-soft: #293e30;
+
+  --warning: #d8bb83;
+
+  --shadow:
+    0 12px 40px rgba(0,0,0,.25);
+}
+
+/* BASE */
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+input,
+select,
+textarea {
+  color-scheme: dark;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--subtle);
+}
+
+/* SIDEBAR */
+
+.sidebar {
+  background: #181c1a;
+  border-color: var(--border);
+}
+
+.brand-symbol {
+  color: var(--accent);
+}
+
+.nav-button {
+  color: var(--muted);
+}
+
+.nav-button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.nav-button:hover {
+  background: var(--surface-hover);
+}
+
+/* TOP BAR */
+
+.topbar {
+  background: rgba(27,31,29,.94);
+  border-color: var(--border);
+}
+
+/* BUTTONS */
+
+.button-primary {
+  background: #a6bba1;
+  color: #182019;
+}
+
+.button-primary:hover {
+  background: #c1d3bd;
+}
+
+.button-secondary {
+  background: var(--surface-alt);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.button-secondary:hover {
+  background: var(--surface-hover);
+}
+
+.button-danger {
+  background: #914747;
+  color: #fff;
+}
+
+.button-ghost {
+  color: var(--muted);
+}
+
+.button-ghost:hover {
+  color: var(--text);
+}
+
+/* CARDS AND PANELS */
+
+.panel,
+.gem-card,
+.profile-section,
+.stat-tile {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.gem-card:hover {
+  border-color: var(--border-dark);
+}
+
+.empty-state {
+  border-color: var(--border-dark);
+}
+
+.empty-state h2 {
+  color: var(--text);
+}
+
+/* INPUTS */
+
+.input,
+.select,
+.textarea {
+  background: #222724;
+  color: var(--text);
+  border-color: var(--border-dark);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.check-option,
+.multi-option {
+  background: var(--surface-alt);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.check-option:has(input:checked),
+.multi-option:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: #657e66;
+  color: var(--accent);
+}
+
+input[type="checkbox"] {
+  accent-color: #90a88b;
+}
+
+/* TAGS */
+
+.tag {
+  background: #2b322d;
+  color: #c6d2c5;
+  border-color: #414b42;
+}
+
+.tag-dark {
+  background: #354637;
+  color: #c1d7bc;
+  border-color: #536a55;
+}
+
+/* PROFILE EDITOR */
+
+.overlay {
+  background: rgba(0,0,0,.7);
+}
+
+.editor-dialog,
+.confirm-dialog {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.editor-section {
+  border-color: var(--border);
+}
+
+.editor-section summary {
+  background: var(--surface-alt);
+  color: var(--text);
+}
+
+.editor-section summary:hover {
+  background: var(--surface-hover);
+}
+
+.dialog-header,
+.dialog-footer {
+  border-color: var(--border);
+}
+
+/* TABLES */
+
+.data-table th {
+  background: var(--surface-alt);
+  color: var(--muted);
+}
+
+.data-table th,
+.data-table td {
+  border-color: var(--border);
+}
+
+.comparison-group-title td {
+  background: var(--surface-alt);
+}
+
+/* COMPARISON */
+
+.compare-meter,
+.bar-track {
+  background: #333b34;
+}
+
+.compare-meter-fill,
+.bar-fill {
+  background: #91ad8d;
+}
+
+.bar-row:hover .bar-fill {
+  background: #b4cbb0;
+}
+
+/* STATISTICS */
+
+.donut-hole {
+  background: var(--surface);
+}
+
+.stat-detail {
+  background: var(--surface-alt);
+}
+
+.cross-cell button:hover {
+  outline-color: var(--accent);
+}
+
+/* RELATIONSHIP GRAPH */
+
+.relationship-graph svg {
+  background: transparent;
+}
+
+.relationship-graph svg line {
+  stroke: #a7b9a2;
+}
+
+.relationship-graph svg circle {
+  stroke: #829781;
+}
+
+.relationship-graph svg text {
+  fill: #dbe6d9;
+}
+
+.relationship-graph svg g circle {
+  fill: #344037;
+}
+
+.relationship-graph svg > circle {
+  fill: #839c7e;
+}
+
+/* MOBILE NAVIGATION */
+
+.mobile-navigation {
+  background: rgba(27,31,29,.97);
+  border-color: var(--border);
+}
+
+.mobile-nav-button {
+  color: var(--muted);
+}
+
+.mobile-nav-button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* TOAST */
+
+.toast {
+  background: #dce8d9;
+  color: #172018;
+}
+
+/* SCROLLBARS */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #48564a transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #48564a;
+  border-radius: 8px;
+}
