@@ -721,20 +721,25 @@ function renderInputField(field) {
 
   }
 
-  else if (field.type === "number") {
+  
+else if (field.type === "number") {
 
-    input = `
-      <input
-        class="input"
-        type="number"
-        name="${field.key}"
-        value="${value === null ? "" : escapeAttr(value)}"
-        ${field.min !== undefined ? `min="${field.min}"` : ""}
-        ${field.max !== undefined ? `max="${field.max}"` : ""}
-        step="${field.step || "any"}"
-        inputmode="decimal">
-    `;
-
+  input = `
+    <input
+      class="input"
+      type="text"
+      name="${field.key}"
+      value="${
+        value === null
+          ? ""
+          : escapeAttr(value)
+      }"
+      inputmode="text"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="—">
+  `;
+   
   }
 
   else if (field.type === "textarea") {
