@@ -1629,6 +1629,7 @@ function formatFieldValue(gem, field) {
 
 }
 
+
 function renderProfile() {
 
   const gem = getGem(state.selectedGem);
@@ -1637,51 +1638,53 @@ function renderProfile() {
     return panelEmpty("Gemstone not found.");
   }
 
-  const sections = CFG.sections.map(section => {
+  const row = (key) => {
 
-    const fields = section.fields.filter(
-      field => hasValue(gem[field.key])
-    );
+    const field = CFG.fieldMap[key];
 
-    if (!fields.length) return "";
+    if (!field || !hasValue(gem[key])) return "";
 
     return `
+      <div class="sheet-row">
 
-      <section class="profile-section ${
-        section.id === "notes" ? "profile-wide" : ""
-      }">
+        <div class="sheet-label">
+          ${escapeHTML(field.label)}
+        </div>
 
-        <h2>${escapeHTML(section.title)}</h2>
+        <div class="sheet-value">
+          ${formatFieldValue(gem, field)}
+        </div>
 
-        <div class="profile-data">
+      </div>
+    `;
+  };
 
-          ${fields.map(field => `
+  const section = (title, keys, extra = "") => {
 
-            <div class="profile-item">
+    const visible = keys.filter(
+      key => hasValue(gem[key])
+    );
 
-              <span class="profile-item-label">
-                ${escapeHTML(field.label)}
-              </span>
+    if (!visible.length) return "";
 
-              <div class="profile-item-value">
-                ${formatFieldValue(gem, field)}
-              </div>
+    return `
+      <section class="sheet-section ${extra}">
 
-            </div>
+        <div class="sheet-section-heading">
+          ${escapeHTML(title)}
+        </div>
 
-          `).join("")}
-
+        <div class="sheet-rows">
+          ${visible.map(row).join("")}
         </div>
 
       </section>
-
     `;
-
-  }).join("");
+  };
 
   return `
 
-    <div class="profile-back">
+    <div class="sheet-toolbar">
 
       <button
         class="button button-ghost"
@@ -1689,90 +1692,190 @@ function renderProfile() {
         ← Library
       </button>
 
-    </div>
-
-    <div class="page-heading profile-header">
-
-      <div>
-
-        <div class="eyebrow">GEMSTONE PROFILE</div>
-
-        <h1>${escapeHTML(gem.name)}</h1>
-
-        <div class="profile-title">
-          ${escapeHTML(gem.title || "")}
-        </div>
-
-        <div class="tags">
-          ${tagsHTML(gem.classifications,true)}
-          ${gem.rarity ? tagHTML(gem.rarity) : ""}
-        </div>
-
-      </div>
-
       <div class="page-actions">
 
         <button
-          class="button button-primary"
-          data-action="edit-gem"
-          data-id="${escapeAttr(gem.id)}">
-          Edit
-        </button>
-
-        <button
-          class="button button-secondary"
+          class="button button-secondary button-small"
           data-action="compare-gem"
           data-id="${escapeAttr(gem.id)}">
           Compare
         </button>
 
         <button
-          class="button button-secondary"
+          class="button button-secondary button-small"
           data-action="relations-gem"
           data-id="${escapeAttr(gem.id)}">
           Relations
         </button>
 
-      </div>
-
-    </div>
-
-    <div class="profile-sections">
-
-      ${sections || panelEmpty("No information entered yet.")}
-
-    </div>
-
-    <div class="panel" style="margin-top:18px;">
-
-      <div class="panel-title">
-        <h3>Profile Actions</h3>
-      </div>
-
-      <div class="page-actions">
-
         <button
-          class="button button-secondary"
-          data-action="duplicate-gem"
+          class="button button-primary button-small"
+          data-action="edit-gem"
           data-id="${escapeAttr(gem.id)}">
-          Duplicate
-        </button>
-
-        <button
-          class="button button-ghost"
-          data-action="delete-gem"
-          data-id="${escapeAttr(gem.id)}">
-          Delete Gemstone
+          Edit
         </button>
 
       </div>
 
     </div>
+
+    <article class="gem-sheet">
+
+      <header class="sheet-header">
+
+        <div class="eyebrow">GEMSTONE RECORD</div>
+
+        <h1>${escapeHTML(gem.name)}</h1>
+
+        ${gem.title ? `
+          <div class="sheet-subtitle">
+            ${escapeHTML(gem.title)}
+          </div>
+        ` : ""}
+
+        <div class="sheet-header-tags">
+
+          ${tagsHTML(gem.classifications, true)}
+
+          ${gem.rarity
+            ? tagHTML(gem.rarity)
+            : ""
+          }
+
+        </div>
+
+      </header>
+
+      <div class="sheet-grid">
+
+        <div class="sheet-column">
+
+          ${section(
+            "Mineral Family",
+            [
+              "mineralGroup",
+              "mineralSpecies",
+              "relatesTo"
+            ]
+          )}
+
+          ${section(
+            "Physical Properties",
+            [
+              "mohs",
+              "density",
+              "crystalSystem",
+              "cleavage",
+              "fracture",
+              "streak",
+              "tenacity",
+              "luster",
+              "transparency"
+            ]
+          )}
+
+          ${section(
+            "Optical Properties",
+            [
+              "refractiveIndex",
+              "birefringence",
+              "pleochroism",
+              "dispersion",
+              "otherEffects"
+            ]
+          )}
+
+        </div>
+
+        <div class="sheet-column">
+
+          ${section(
+            "Appearance",
+            ["colors"]
+          )}
+
+          ${section(
+            "Origin & Discovery",
+            [
+              "countries",
+              "discoveryYear",
+              "discoveryLocation",
+              "discoverer",
+              "etymology"
+            ]
+          )}
+
+          ${section(
+            "Associations",
+            [
+              "zodiacStone",
+              "planetaryStone",
+              "birthStone",
+              "anniversaryStone",
+              "meaning",
+              "connectedWith"
+            ]
+          )}
+
+        </div>
+
+      </div>
+
+      ${hasValue(gem.otherFacts) ? `
+
+        <section class="sheet-notes">
+
+          <div class="sheet-section-heading">
+            Other Facts
+          </div>
+
+          ${formatFieldValue(
+            gem,
+            CFG.fieldMap.otherFacts
+          )}
+
+        </section>
+
+      ` : ""}
+
+      <footer class="sheet-footer">
+
+        <span>
+          Last updated:
+          ${gem.updatedAt
+            ? escapeHTML(
+                new Date(gem.updatedAt)
+                  .toLocaleDateString()
+              )
+            : "—"
+          }
+        </span>
+
+        <div class="page-actions">
+
+          <button
+            class="button button-ghost button-small"
+            data-action="duplicate-gem"
+            data-id="${escapeAttr(gem.id)}">
+            Duplicate
+          </button>
+
+          <button
+            class="button button-ghost button-small"
+            data-action="delete-gem"
+            data-id="${escapeAttr(gem.id)}">
+            Delete
+          </button>
+
+        </div>
+
+      </footer>
+
+    </article>
 
   `;
 
 }
-
 
 /* =========================================
    SIMILARITY ENGINE
