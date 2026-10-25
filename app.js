@@ -5187,6 +5187,24 @@ function handleAction(element) {
       $("#import-file").click();
       break;
 
+case "add-flex":
+  addFlexibleValue(element.dataset.field);
+  break;
+
+case "remove-flex":
+  removeFlexibleValue(
+    element.dataset.field,
+    Number(element.dataset.index)
+  );
+  break;
+
+case "toggle-flex":
+  toggleFlexibleField(
+    element.dataset.field,
+    element.dataset.enabled === "true"
+  );
+  break;
+
     case "stat-detail":
 
       state.statDetail = {
