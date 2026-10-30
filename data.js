@@ -1,14 +1,17 @@
 
-/* =========================================
-   GEM LIBRARY V2 — DATA CONFIGURATION
-========================================= */
-
 "use strict";
+
+/* ==========================================
+   GEM LIBRARY V3 — DATA
+   Compatible with existing V2 storage
+========================================== */
 
 const GEM_CONFIG = {
 
   storageKey: "gemLibraryV2.records",
   draftKey: "gemLibraryV2.draft",
+
+  version: 3,
 
   classifications: [
     "Semi Precious",
@@ -17,8 +20,7 @@ const GEM_CONFIG = {
     "Minerals",
     "Mineraloids",
     "Natural Gem",
-    "Synthetic",
-    "Imitation"
+    "Synthetic"
   ],
 
   rarities: [
@@ -26,6 +28,61 @@ const GEM_CONFIG = {
     "Uncommon",
     "Rare",
     "Very Rare"
+  ],
+
+  mohsOptions: Array.from(
+    { length: 21 },
+    (_, i) => i / 2
+  ).map(String),
+
+  crystalSystems: [
+    "Cubic",
+    "Tetragonal",
+    "Hexagonal",
+    "Trigonal",
+    "Orthorhombic",
+    "Monoclinic",
+    "Triclinic"
+  ],
+
+  cleavages: [
+    "Perfect",
+    "Excellent",
+    "Good",
+    "Imperfect",
+    "Poor",
+    "Indistinct",
+    "None"
+  ],
+
+  fractures: [
+    "Even",
+    "Uneven",
+    "Hackly",
+    "Splintery",
+    "Fibrous",
+    "Conchoidal"
+  ],
+
+  tenacities: [
+    "Brittle",
+    "Malleable",
+    "Ductile",
+    "Sectile",
+    "Flexible",
+    "Elastic",
+    "Tough"
+  ],
+
+  lusters: [
+    "Adamantine",
+    "Vitreous",
+    "Resinous",
+    "Pearly",
+    "Silky",
+    "Greasy",
+    "Waxy",
+    "Dull"
   ],
 
   transparencies: [
@@ -56,7 +113,7 @@ const GEM_CONFIG = {
         {
           key: "classifications",
           label: "Classifications",
-          type: "multi",
+          type: "choice",
           options: "classifications"
         },
         {
@@ -64,68 +121,43 @@ const GEM_CONFIG = {
           label: "Rarity",
           type: "select",
           options: "rarities"
-        }
-      ]
-    },
-
-    {
-      id: "family",
-      title: "Mineral Family",
-      fields: [
-        {
-          key: "mineralGroup",
-          label: "Group",
-          type: "text"
         },
         {
-          key: "mineralSpecies",
-          label: "Species",
-          type: "text"
-        },
-        {
-          key: "relatesTo",
-          label: "Relates To",
-          type: "links",
-          compare: false,
+          key: "mineralFamily",
+          label: "Mineral Family",
+          type: "text",
           wide: true
         }
       ]
     },
 
     {
-      id: "science",
-      title: "Science",
+      id: "physical",
+      title: "Physical Properties",
       fields: [
         {
           key: "mohs",
           label: "Mohs",
-          type: "number",
-          min: 0,
-          max: 10,
-          step: "any",
-          scale: 10
-        },
-        {
-          key: "density",
-          label: "Density",
-          type: "number",
-          min: 0,
-          step: "any"
+          type: "choice",
+          options: "mohsOptions"
         },
         {
           key: "crystalSystem",
           label: "Crystal System",
-          type: "text"
+          type: "choice",
+          options: "crystalSystems"
         },
         {
           key: "cleavage",
           label: "Cleavage",
-          type: "text"
+          type: "choice",
+          options: "cleavages"
         },
         {
           key: "fracture",
           label: "Fracture",
-          type: "text"
+          type: "choice",
+          options: "fractures"
         },
         {
           key: "streak",
@@ -135,58 +167,34 @@ const GEM_CONFIG = {
         {
           key: "tenacity",
           label: "Tenacity",
-          type: "text"
+          type: "choice",
+          options: "tenacities"
         },
         {
           key: "luster",
           label: "Luster",
-          type: "text"
+          type: "choice",
+          options: "lusters"
         },
         {
           key: "transparency",
           label: "Transparency",
-          type: "multi",
+          type: "choice",
           options: "transparencies"
-        },
-        {
-          key: "refractiveIndex",
-          label: "Refractive Index",
-          type: "number",
-          min: 0,
-          step: "any"
-        },
-        {
-          key: "birefringence",
-          label: "Birefringence",
-          type: "number",
-          min: 0,
-          step: "any"
-        },
-        {
-          key: "pleochroism",
-          label: "Pleochroism",
-          type: "text"
-        },
-        {
-          key: "dispersion",
-          label: "Dispersion",
-          type: "number",
-          min: 0,
-          step: "any"
-        },
-        {
-          key: "otherEffects",
-          label: "Other Effects",
-          type: "bullets",
-          wide: true
         }
       ]
     },
 
     {
-      id: "origins",
+      id: "appearance",
       title: "Appearance & Origins",
       fields: [
+        {
+          key: "otherEffects",
+          label: "Other Effects",
+          type: "tags",
+          wide: true
+        },
         {
           key: "colors",
           label: "Colors",
@@ -203,7 +211,7 @@ const GEM_CONFIG = {
           key: "discoveryYear",
           label: "Discovery Year",
           type: "number",
-          step: "1"
+          wide: false
         },
         {
           key: "discoveryLocation",
@@ -225,8 +233,8 @@ const GEM_CONFIG = {
     },
 
     {
-      id: "associations",
-      title: "Associations",
+      id: "cultural",
+      title: "Cultural Associations",
       fields: [
         {
           key: "zodiacStone",
@@ -252,160 +260,145 @@ const GEM_CONFIG = {
           key: "meaning",
           label: "Meaning",
           type: "tags",
-          wide: true
+          wide: true,
+          hint: "Traditional and modern crystal beliefs"
         },
         {
           key: "connectedWith",
           label: "Connected With",
           type: "tags",
+          wide: true,
+          hint: "Gods and deities from any culture"
+        }
+      ]
+    },
+
+    {
+      id: "value",
+      title: "Value & Usage",
+      fields: [
+        {
+          key: "priceRange",
+          label: "Price Range",
+          type: "text"
+        },
+        {
+          key: "collectorValue",
+          label: "Collector Value",
+          type: "text"
+        },
+        {
+          key: "jewelry",
+          label: "Jewelry",
+          type: "textarea",
+          wide: true
+        },
+        {
+          key: "safety",
+          label: "Safety",
+          type: "textarea",
           wide: true
         }
       ]
     },
 
     {
-      id: "notes",
-      title: "Other Facts",
+      id: "composition",
+      title: "Composition",
       fields: [
         {
-          key: "otherFacts",
-          label: "Other Facts",
-          type: "bullets",
+          key: "primaryMinerals",
+          label: "Primary Minerals",
+          type: "tags",
           wide: true,
-          compare: false
+          hint: "Main minerals making up the gem"
+        },
+        {
+          key: "secondaryMinerals",
+          label: "Secondary Minerals",
+          type: "tags",
+          wide: true,
+          hint: "Other common mineral constituents"
+        },
+        {
+          key: "accessoryMinerals",
+          label: "Accessory Minerals",
+          type: "tags",
+          wide: true,
+          hint: "Uncommon but notable mineral constituents"
+        },
+        {
+          key: "inclusions",
+          label: "Inclusions",
+          type: "tags",
+          wide: true,
+          hint: "Minerals trapped inside the gem"
+        }
+      ]
+    },
+
+    {
+      id: "mineral",
+      title: "Mineral Relationships",
+      fields: [
+        {
+          key: "mineralSpecies",
+          label: "Species",
+          type: "text",
+          hint: "Example: Corundum"
+        },
+        {
+          key: "mineralGroup",
+          label: "Mineral Group",
+          type: "text",
+          hint: "Example: Garnet group"
+        },
+        {
+          key: "varieties",
+          label: "Varieties",
+          type: "tags",
+          wide: true,
+          hint: "Varieties connected with this species"
+        },
+        {
+          key: "relatesTo",
+          label: "Manual Gemstone Links",
+          type: "links",
+          wide: true,
+          compare: false,
+          hint: "Choose other saved gemstone profiles"
+        }
+      ]
+    },
+
+    {
+      id: "geology",
+      title: "Geological Relationships",
+      fields: [
+        {
+          key: "associatedMinerals",
+          label: "Associated Minerals",
+          type: "tags",
+          wide: true,
+          hint: "Minerals naturally found together"
+        },
+        {
+          key: "geologicalOrigin",
+          label: "Same Geological Origin",
+          type: "tags",
+          wide: true,
+          hint: "Shared formation conditions or environments"
+        },
+        {
+          key: "hostRocks",
+          label: "Host Rocks",
+          type: "tags",
+          wide: true,
+          hint: "Rocks in which gemstones form"
         }
       ]
     }
 
-  ],
-
-  statisticsDimensions: [
-
-    {
-      key: "classifications",
-      label: "Classification"
-    },
-    {
-      key: "rarity",
-      label: "Rarity"
-    },
-    {
-      key: "mineralGroup",
-      label: "Mineral Group"
-    },
-    {
-      key: "mineralSpecies",
-      label: "Mineral Species"
-    },
-    {
-      key: "colors",
-      label: "Colors"
-    },
-    {
-      key: "countries",
-      label: "Countries"
-    },
-    {
-      key: "crystalSystem",
-      label: "Crystal System"
-    },
-    {
-      key: "cleavage",
-      label: "Cleavage"
-    },
-    {
-      key: "fracture",
-      label: "Fracture"
-    },
-    {
-      key: "streak",
-      label: "Streak"
-    },
-    {
-      key: "tenacity",
-      label: "Tenacity"
-    },
-    {
-      key: "luster",
-      label: "Luster"
-    },
-    {
-      key: "transparency",
-      label: "Transparency"
-    },
-    {
-      key: "pleochroism",
-      label: "Pleochroism"
-    },
-    {
-      key: "otherEffects",
-      label: "Other Effects"
-    },
-    {
-      key: "discoveryLocation",
-      label: "Discovery Location"
-    },
-    {
-      key: "discoverer",
-      label: "Discoverer"
-    },
-    {
-      key: "zodiacStone",
-      label: "Zodiac Stone"
-    },
-    {
-      key: "planetaryStone",
-      label: "Planetary Stone"
-    },
-    {
-      key: "birthStone",
-      label: "Birth Stone"
-    },
-    {
-      key: "anniversaryStone",
-      label: "Anniversary Stone"
-    },
-    {
-      key: "meaning",
-      label: "Meaning"
-    },
-    {
-      key: "connectedWith",
-      label: "Connected With"
-    }
-  ],
-
-  numericDimensions: [
-    {
-      key: "mohs",
-      label: "Mohs Hardness",
-      bins: [0,2,4,6,8,10]
-    },
-    {
-      key: "density",
-      label: "Density",
-      bins: null
-    },
-    {
-      key: "refractiveIndex",
-      label: "Refractive Index",
-      bins: null
-    },
-    {
-      key: "birefringence",
-      label: "Birefringence",
-      bins: null
-    },
-    {
-      key: "dispersion",
-      label: "Dispersion",
-      bins: null
-    },
-    {
-      key: "discoveryYear",
-      label: "Discovery Year",
-      bins: null
-    }
   ],
 
   chartColors: [
@@ -422,35 +415,55 @@ const GEM_CONFIG = {
     "#697a70",
     "#9baba1"
   ]
-
 };
 
-
-/* =========================================
-   FIELD LOOKUP
-========================================= */
+/* ==========================================
+   FIELD REGISTRY
+========================================== */
 
 GEM_CONFIG.fields =
   GEM_CONFIG.sections.flatMap(
     section => section.fields
   );
 
-GEM_CONFIG.fieldMap =
-  Object.fromEntries(
-    GEM_CONFIG.fields.map(
-      field => [field.key, field]
-    )
-  );
+GEM_CONFIG.fieldMap = Object.fromEntries(
+  GEM_CONFIG.fields.map(field => [
+    field.key,
+    field
+  ])
+);
 
 GEM_CONFIG.comparableFields =
   GEM_CONFIG.fields.filter(
     field => field.compare !== false
   );
 
+GEM_CONFIG.statisticsDimensions =
+  GEM_CONFIG.fields
+    .filter(field =>
+      field.compare !== false &&
+      field.key !== "discoveryYear"
+    )
+    .map(field => ({
+      key: field.key,
+      label: field.label
+    }));
 
-/* =========================================
-   EMPTY GEMSTONE
-========================================= */
+GEM_CONFIG.numericDimensions = [
+  {
+    key: "discoveryYear",
+    label: "Discovery Year"
+  },
+  {
+    key: "mohs",
+    label: "Mohs Hardness",
+    bins: [0,2,4,6,8,10]
+  }
+];
+
+/* ==========================================
+   EMPTY RECORD
+========================================== */
 
 function createEmptyGem() {
 
@@ -463,10 +476,9 @@ function createEmptyGem() {
   for (const field of GEM_CONFIG.fields) {
 
     if (
-      field.type === "tags" ||
-      field.type === "multi" ||
-      field.type === "bullets" ||
-      field.type === "links"
+      ["tags","choice","links"].includes(
+        field.type
+      )
     ) {
       gem[field.key] = [];
     }
@@ -478,17 +490,46 @@ function createEmptyGem() {
     else {
       gem[field.key] = "";
     }
-
   }
 
   return gem;
 }
 
+/* ==========================================
+   NORMALIZATION
+   PRESERVES OLD DATA WHERE POSSIBLE
+========================================== */
 
-/* =========================================
-   RECORD NORMALIZATION
-========================================= */
+function cleanList(value) {
 
+  const items = Array.isArray(value)
+    ? value
+    : value === null ||
+      value === undefined ||
+      value === ""
+      ? []
+      : [value];
+
+  const seen = new Set();
+
+  return items
+    .filter(item =>
+      typeof item === "string" ||
+      typeof item === "number"
+    )
+    .map(item => String(item).trim())
+    .filter(item => {
+
+      if (!item) return false;
+
+      const key = item.toLocaleLowerCase();
+
+      if (seen.has(key)) return false;
+
+      seen.add(key);
+      return true;
+    });
+}
 
 function normalizeGem(input) {
 
@@ -504,42 +545,50 @@ function normalizeGem(input) {
 
   const gem = {
     ...base,
-    id: typeof input.id === "string" ? input.id : "",
+    id:
+      typeof input.id === "string"
+        ? input.id
+        : "",
     createdAt:
       typeof input.createdAt === "string"
-        ? input.createdAt : "",
+        ? input.createdAt
+        : "",
     updatedAt:
       typeof input.updatedAt === "string"
-        ? input.updatedAt : ""
+        ? input.updatedAt
+        : ""
   };
-
-  const listTypes = [
-    "tags",
-    "multi",
-    "bullets",
-    "links"
-  ];
 
   for (const field of GEM_CONFIG.fields) {
 
-    const value = input[field.key];
+    let value = input[field.key];
 
-    // Fields that are always lists.
-    if (listTypes.includes(field.type)) {
+    if (
+      field.key === "mineralFamily" &&
+      !value
+    ) {
+      value =
+        input.mineralGroup ||
+        input.mineralSpecies ||
+        "";
+    }
 
-      gem[field.key] = Array.isArray(value)
-        ? [...new Set(
-            value
-              .filter(item => typeof item === "string")
-              .map(item => item.trim())
-              .filter(Boolean)
-          )]
-        : [];
+    if (
+      field.key === "varieties" &&
+      !value
+    ) {
+      value = [];
+    }
 
+    if (
+      field.type === "tags" ||
+      field.type === "choice" ||
+      field.type === "links"
+    ) {
+      gem[field.key] = cleanList(value);
       continue;
     }
 
-    // Optional multi-answer numerical fields.
     if (field.type === "number") {
 
       const convert = item => {
@@ -548,14 +597,12 @@ function normalizeGem(input) {
           item === null ||
           item === undefined ||
           String(item).trim() === ""
-        ) {
-          return null;
-        }
+        ) return null;
 
-        const number = Number(item);
+        const result = Number(item);
 
-        return Number.isFinite(number)
-          ? number
+        return Number.isFinite(result)
+          ? result
           : null;
       };
 
@@ -563,46 +610,42 @@ function normalizeGem(input) {
 
         gem[field.key] = [
           ...new Set(
-            value.map(convert)
-              .filter(item => item !== null)
+            value.map(convert).filter(
+              item => item !== null
+            )
           )
         ];
 
       } else {
+
         gem[field.key] = convert(value);
       }
 
       continue;
     }
 
-    // Optional multi-answer text fields.
-    if (Array.isArray(value)) {
-
-      const seen = new Set();
-
-      gem[field.key] = value
-        .filter(item => typeof item === "string")
-        .map(item => item.trim())
-        .filter(item => {
-
-          if (!item) return false;
-
-          const key = item.toLocaleLowerCase();
-
-          if (seen.has(key)) return false;
-
-          seen.add(key);
-          return true;
-
-        });
-
-    } else {
+    if (field.type === "select") {
 
       gem[field.key] =
         typeof value === "string"
           ? value
           : "";
 
+      continue;
+    }
+
+    if (Array.isArray(value)) {
+
+      gem[field.key] = cleanList(value);
+
+    } else {
+
+      gem[field.key] =
+        typeof value === "string"
+          ? value
+          : typeof value === "number"
+            ? String(value)
+            : "";
     }
 
   }
@@ -610,9 +653,9 @@ function normalizeGem(input) {
   return gem;
 }
 
-/* =========================================
-   GLOBAL EXPORT
-========================================= */
+/* ==========================================
+   PUBLIC GLOBALS
+========================================== */
 
 window.GEM_CONFIG = GEM_CONFIG;
 window.createEmptyGem = createEmptyGem;
