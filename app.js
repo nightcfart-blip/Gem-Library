@@ -1,19 +1,18 @@
 
-/* =========================================
-   GEM LIBRARY V2 — COMPLETE APPLICATION
-========================================= */
-
 "use strict";
 
-/* =========================================
-   INITIAL STATE
-========================================= */
+/* ==========================================
+   GEM LIBRARY V3 — APPLICATION
+   Existing HTML / CSS compatible
+========================================== */
 
 const CFG = window.GEM_CONFIG;
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
+const main = $("#main-content");
 
 const state = {
   gems: [],
-
   page: "library",
   selectedGem: null,
 
@@ -30,5098 +29,426 @@ const state = {
   multiIds: [],
 
   relationId: "",
+  relationMode: "family",
   relationSort: "similarity",
+  relationTarget: "",
+  relationFilter: "",
 
-  statDimension: "mineralSpecies",
-  statSecondary: "rarity",
-  statChart: "bar",
-  statRarity: "",
   statSearch: "",
+  statRarity: "",
+  statDimension: "mineralSpecies",
+  statCrossA: "mineralSpecies",
+  statCrossB: "rarity",
+  statChart: "bar",
   statMetric: "records",
   statDetail: null,
 
   pendingConfirmation: null
 };
 
-let toastTimeout = null;
-let draftTimeout = null;
+let toastTimer = null;
+let draftTimer = null;
+let statTimer = null;
 
+/* ==========================================
+   GENERAL HELPERS
+========================================== */
 
-/* =========================================
-   DOM HELPERS
-========================================= */
-
-const $ = selector =>
-  document.querySelector(selector);
-
-const $$ = selector =>
-  [...document.querySelectorAll(selector)];
-
-const main = $("#main-content");
-
-function escapeHTML(value) {
-
+function esc(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
-
 }
 
-function escapeAttr(value) {
-  return escapeHTML(value);
-}
-
-function formatNumber(value, digits = 2) {
-
-  if (!Number.isFinite(Number(value))) return "—";
-
-  return Number(value).toLocaleString(
-    undefined,
-    { maximumFractionDigits: digits }
-  );
-
-}
+const escapeHTML = esc;
+const escapeAttr = esc;
 
 function compact(value) {
-
   return String(value ?? "")
     .trim()
     .replace(/\s+/g, " ");
-
 }
 
 function canonical(value) {
   return compact(value).toLocaleLowerCase();
 }
 
-function round(value, digits = 1) {
-
-  const multiplier = 10 ** digits;
-
-  return Math.round(
-    (value + Number.EPSILON) * multiplier
-  ) / multiplier;
-
+function arrayOf(value) {
+  if (Array.isArray(value)) return value;
+  if (value === null || value === undefined ||
+      value === "") return [];
+  return [value];
 }
 
-function clamp(value, minimum, maximum) {
-  return Math.min(maximum, Math.max(minimum, value));
+function hasValue(value) {
+  return arrayOf(value).some(item =>
+    item !== null &&
+    item !== undefined &&
+    String(item).trim() !== ""
+  );
 }
 
-function uniqueId() {
+function distinct(values) {
+  const seen = new Set();
 
-  if (
-    window.crypto &&
-    typeof window.crypto.randomUUID === "function"
-  ) {
+  return values.filter(item => {
+    const key = canonical(item);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function valuesOf(gem,key) {
+  return distinct(arrayOf(gem?.[key])
+    .filter(item => item !== null)
+    .map(String));
+}
+
+function joinValue(value, separator = ", ") {
+  return arrayOf(value)
+    .filter(item => item !== null && String(item).trim())
+    .join(separator);
+}
+
+function formatNumber(value,digits=2) {
+  if (value === null || value === undefined ||
+      value === "") return "—";
+
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "—";
+
+  return number.toLocaleString(undefined,{
+    maximumFractionDigits:digits
+  });
+}
+
+function round(value,digits=1) {
+  const factor = 10 ** digits;
+  return Math.round((value + Number.EPSILON)*factor)/factor;
+}
+
+function uid() {
+  if (window.crypto?.randomUUID) {
     return window.crypto.randomUUID();
   }
-
-  return (
-    "gem-" +
-    Date.now().toString(36) +
-    "-" +
-    Math.random().toString(36).slice(2)
-  );
-
+  return "gem-" + Date.now().toString(36) +
+    "-" + Math.random().toString(36).slice(2);
 }
 
 function getGem(id) {
   return state.gems.find(gem => gem.id === id) || null;
 }
 
-function getGemName(id) {
-  return getGem(id)?.name || "Unknown Gemstone";
-}
-
-function alphabetically(a, b) {
-  return a.localeCompare(b, undefined, {
-    sensitivity: "base",
-    numeric: true
-  });
-}
-
 function sortGems(gems) {
-
-  return [...gems].sort(
-    (a, b) => alphabetically(a.name, b.name)
+  return [...gems].sort((a,b) =>
+    a.name.localeCompare(b.name,undefined,{
+      sensitivity:"base",
+      numeric:true
+    })
   );
-
 }
 
-function hasValue(value) {
+function options(items,selected="",empty="Select...") {
+  return `<option value="">${esc(empty)}</option>` +
+    items.map(item => {
+      const value = typeof item === "string" ?
+        item : item.value;
+      const label = typeof item === "string" ?
+        item : item.label;
 
-  if (value === null || value === undefined) {
-    return false;
-  }
-
-  if (Array.isArray(value)) {
-    return value.some(
-      item => String(item).trim() !== ""
-    );
-  }
-
-  if (typeof value === "number") {
-    return Number.isFinite(value);
-  }
-
-  return String(value).trim() !== "";
+      return `<option value="${esc(value)}"
+        ${String(value) === String(selected) ?
+        "selected" : ""}>${esc(label)}</option>`;
+    }).join("");
 }
 
-function makeOptions(
-  items,
-  selected,
-  emptyLabel = "Select..."
-) {
-
-  let html = `<option value="">${escapeHTML(emptyLabel)}</option>`;
-
-  for (const item of items) {
-
-    const value =
-      typeof item === "string"
-        ? item
-        : item.value;
-
-    const label =
-      typeof item === "string"
-        ? item
-        : item.label;
-
-    html += `
-      <option
-        value="${escapeAttr(value)}"
-        ${String(value) === String(selected) ? "selected" : ""}>
-        ${escapeHTML(label)}
-      </option>
-    `;
-
-  }
-
-  return html;
+function gemOptions(selected="",empty="Choose gemstone") {
+  return options(sortGems(state.gems).map(gem=>({
+    value:gem.id,
+    label:gem.name
+  })),selected,empty);
 }
 
-function gemOptions(selected, emptyLabel = "Choose gemstone") {
+function tag(value,dark=false) {
+  return `<span class="tag ${dark?"tag-dark":""}">
+    ${esc(value)}</span>`;
+}
 
-  return makeOptions(
-    sortGems(state.gems).map(gem => ({
-      value: gem.id,
-      label: gem.name
-    })),
-    selected,
-    emptyLabel
-  );
+function tags(values,dark=false) {
+  return arrayOf(values).map(v=>tag(v,dark)).join("");
+}
 
+function empty(message) {
+  return `<div class="empty-state">
+    <div class="empty-symbol">◇</div>
+    <p>${esc(message)}</p>
+  </div>`;
+}
+
+function toast(message) {
+  const element = $("#toast");
+  if (!element) return;
+
+  clearTimeout(toastTimer);
+  element.textContent = message;
+  element.classList.add("visible");
+
+  toastTimer = setTimeout(()=>{
+    element.classList.remove("visible");
+  },3000);
 }
 
 function fieldLabel(key) {
   return CFG.fieldMap[key]?.label || key;
 }
 
-function panelEmpty(message) {
-
-  return `
-    <div class="empty-state">
-      <div class="empty-symbol">◇</div>
-      <p>${escapeHTML(message)}</p>
-    </div>
-  `;
-
+function gemButton(gem) {
+  return `<button type="button" class="tag"
+    data-action="view-gem" data-id="${esc(gem.id)}">
+    ${esc(gem.name)}</button>`;
 }
 
-function tagHTML(value, dark = false) {
-
-  return `
-    <span class="tag ${dark ? "tag-dark" : ""}">
-      ${escapeHTML(value)}
-    </span>
-  `;
-
+function fieldContains(gem,key,value) {
+  return valuesOf(gem,key).some(v =>
+    canonical(v) === canonical(value)
+  );
 }
 
-function tagsHTML(values, dark = false) {
-
-  return (values || [])
-    .map(value => tagHTML(value, dark))
-    .join("");
-
-}
-
-function toast(message) {
-
-  const element = $("#toast");
-
-  clearTimeout(toastTimeout);
-
-  element.textContent = message;
-  element.classList.add("visible");
-
-  toastTimeout = setTimeout(() => {
-    element.classList.remove("visible");
-  }, 2900);
-
-}
-
-
-/* =========================================
-   LOCAL STORAGE
-========================================= */
+/* ==========================================
+   STORAGE AND BACKUPS
+========================================== */
 
 function loadLibrary() {
-
   try {
+    const raw = localStorage.getItem(CFG.storageKey);
 
-    const stored = localStorage.getItem(CFG.storageKey);
-
-    if (!stored) {
+    if (!raw) {
       state.gems = [];
       return;
     }
 
-    const parsed = JSON.parse(stored);
-
+    const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      throw new Error("Invalid library format");
+      throw Error("Unexpected library format");
     }
 
     const ids = new Set();
 
     state.gems = parsed
       .map(normalizeGem)
-      .filter(gem => {
-
-        if (!gem.name.trim()) return false;
-
+      .filter(gem => typeof gem.name === "string" &&
+        gem.name.trim())
+      .map(gem => {
         if (!gem.id || ids.has(gem.id)) {
-          gem.id = uniqueId();
+          gem.id = uid();
         }
-
         ids.add(gem.id);
-
-        return true;
-
+        return gem;
       });
 
-  }
-
-  catch (error) {
-
-    console.error("Library loading failed:", error);
-
+  } catch(error) {
+    console.error("Library load:",error);
     state.gems = [];
-
-    toast(
-      "Library could not be loaded. Existing stored data was not overwritten."
-    );
-
+    toast("Could not read library. Stored data was not overwritten.");
   }
-
 }
 
-function persistLibrary() {
-
+function persist() {
   try {
-
     localStorage.setItem(
       CFG.storageKey,
       JSON.stringify(state.gems)
     );
-
     return true;
-
-  }
-
-  catch (error) {
-
-    console.error("Saving failed:", error);
-
-    toast(
-      "Save failed. Browser storage may be full or disabled."
-    );
-
+  } catch(error) {
+    console.error("Library save:",error);
+    toast("Save failed. Check browser storage.");
     return false;
-
   }
-
 }
 
-function saveDraft() {
-
+function storeDraft() {
   if (!state.editorOpen || !state.draft) return;
 
   try {
+    localStorage.setItem(CFG.draftKey,JSON.stringify({
+      editingId:state.editingId,
+      gem:state.draft
+    }));
 
-    localStorage.setItem(
-      CFG.draftKey,
-      JSON.stringify({
-        editingId: state.editingId,
-        gem: state.draft
-      })
-    );
-
-    $("#editor-status").textContent =
-      "Draft preserved locally";
-
-  }
-
-  catch (error) {
-
-    console.error("Draft saving failed:", error);
-
-    $("#editor-status").textContent =
-      "Draft could not be saved";
-
-  }
-
-}
-
-function queueDraftSave() {
-
-  clearTimeout(draftTimeout);
-
-  draftTimeout = setTimeout(
-    saveDraft,
-    300
-  );
-
-}
-
-function clearDraft() {
-
-  clearTimeout(draftTimeout);
-
-  try {
-    localStorage.removeItem(CFG.draftKey);
-  }
-  catch (error) {
+    const status = $("#editor-status");
+    if (status) status.textContent = "Draft preserved";
+  } catch(error) {
     console.error(error);
+    toast("Unable to preserve draft.");
   }
+}
 
+function queueDraft() {
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(storeDraft,300);
 }
 
 function readDraft() {
-
   try {
+    const raw = localStorage.getItem(CFG.draftKey);
+    if (!raw) return null;
 
-    const stored = localStorage.getItem(CFG.draftKey);
-
-    if (!stored) return null;
-
-    const parsed = JSON.parse(stored);
-
-    if (!parsed || !parsed.gem) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.gem) return null;
 
     return {
-      editingId:
-        typeof parsed.editingId === "string"
-          ? parsed.editingId
-          : null,
-
-      gem: normalizeGem(parsed.gem)
+      editingId:parsed.editingId || null,
+      gem:normalizeGem(parsed.gem)
     };
-
-  }
-
-  catch {
+  } catch {
     return null;
   }
-
-}
-
-
-/* =========================================
-   LIBRARY OPERATIONS
-========================================= */
-
-function saveGem(gemInput) {
-
-  const gem = normalizeGem(gemInput);
-
-  gem.name = compact(gem.name);
-
-  if (!gem.name) {
-    toast("A gemstone needs a name.");
-    return false;
-  }
-
-  if (
-    state.gems.some(other =>
-      other.id !== gem.id &&
-      canonical(other.name) === canonical(gem.name)
-    )
-  ) {
-
-    toast("A gemstone with that name already exists.");
-
-    return false;
-
-  }
-
-  if (
-    gem.mohs !== null &&
-    (gem.mohs < 0 || gem.mohs > 10)
-  ) {
-
-    toast("Mohs hardness must be between 0 and 10.");
-    return false;
-
-  }
-
-  const oldGem = getGem(gem.id);
-
-  const now = new Date().toISOString();
-
-  if (!gem.id) {
-    gem.id = uniqueId();
-  }
-
-  gem.createdAt =
-    oldGem?.createdAt ||
-    gem.createdAt ||
-    now;
-
-  gem.updatedAt = now;
-
-  gem.relatesTo = gem.relatesTo.filter(
-    id =>
-      id !== gem.id &&
-      !!getGem(id)
-  );
-
-  const previous = [...state.gems];
-
-  if (oldGem) {
-
-    state.gems = state.gems.map(
-      item => item.id === gem.id ? gem : item
-    );
-
-  }
-
-  else {
-    state.gems.push(gem);
-  }
-
-  if (!persistLibrary()) {
-    state.gems = previous;
-    return false;
-  }
-
-  clearDraft();
-
-  state.selectedGem = gem.id;
-
-  toast("Gemstone saved.");
-
-  return true;
-
-}
-
-function deleteGem(id) {
-
-  const gem = getGem(id);
-
-  if (!gem) return;
-
-  confirmAction(
-    "Delete Gemstone",
-    `Delete "${gem.name}" permanently from this browser?`,
-    () => {
-
-      const previous = [...state.gems];
-
-      state.gems = state.gems
-        .filter(item => item.id !== id)
-        .map(item => ({
-          ...item,
-          relatesTo:
-            (item.relatesTo || [])
-              .filter(link => link !== id)
-        }));
-
-      if (!persistLibrary()) {
-        state.gems = previous;
-        return;
-      }
-
-      if (state.selectedGem === id) {
-        state.selectedGem = null;
-      }
-
-      refreshSelections();
-      state.page = "library";
-
-      render();
-
-      toast("Gemstone deleted.");
-
-    }
-  );
-
-}
-
-function duplicateGem(id) {
-
-  const original = getGem(id);
-
-  if (!original) return;
-
-  const copy = normalizeGem(original);
-
-  copy.id = "";
-  copy.name = original.name + " (Copy)";
-  copy.createdAt = "";
-  copy.updatedAt = "";
-
-  let number = 2;
-
-  while (
-    state.gems.some(gem =>
-      canonical(gem.name) === canonical(copy.name)
-    )
-  ) {
-
-    copy.name =
-      original.name + ` (Copy ${number})`;
-
-    number++;
-
-  }
-
-  openEditor(null, copy);
-
-}
-
-
-/* =========================================
-   EDITOR
-========================================= */
-
-function openEditor(id = null, initial = null) {
-
-  if (state.editorOpen) {
-    saveDraft();
-  }
-
-  const gem = initial
-    ? normalizeGem(initial)
-    : id
-      ? getGem(id)
-      : createEmptyGem();
-
-  if (!gem) {
-    toast("Gemstone not found.");
-    return;
-  }
-
-  state.editingId = id || null;
-  state.draft = normalizeGem(gem);
-  state.editorOpen = true;
-
-  $("#editor-heading").textContent =
-    id ? "Edit Gemstone" : "New Gemstone";
-
-  $("#editor-fields").innerHTML =
-    renderEditorFields();
-
-  $("#editor-status").textContent =
-    "Changes saved as draft";
-
-  $("#editor-overlay").classList.remove("hidden");
-
-  document.body.style.overflow = "hidden";
-
-  saveDraft();
-
-  const nameField =
-    document.querySelector('[name="name"]');
-
-  if (nameField && !id) {
-    nameField.focus();
-  }
-
-}
-
-function closeEditor() {
-
-  state.editorOpen = false;
-
-  $("#editor-overlay").classList.add("hidden");
-
-  document.body.style.overflow = "";
-
-  state.draft = null;
-  state.editingId = null;
-
-}
-
-function discardAndCloseEditor() {
-
-  confirmAction(
-    "Close Editor",
-    "Close this editor? Your current edits will remain available as a recoverable draft.",
-    () => {
-      saveDraft();
-      closeEditor();
-    }
-  );
-
-}
-
-function renderEditorFields() {
-
-  return CFG.sections.map((section, index) => `
-
-    <details
-      class="editor-section"
-      ${index === 0 ? "open" : ""}>
-
-      <summary>
-        ${escapeHTML(section.title)}
-      </summary>
-
-      <div class="editor-section-content">
-
-        <div class="form-grid">
-
-          ${section.fields.map(
-            field => renderInputField(field)
-          ).join("")}
-
-        </div>
-
-      </div>
-
-    </details>
-
-  `).join("");
-
-}
-
-
-/* =========================================
-   OPTIONAL MULTIPLE-ANSWER FIELDS
-========================================= */
-
-function isFlexibleField(field) {
-  return ["text", "number", "textarea"]
-    .includes(field.type);
-}
-
-function flexibleValues(key) {
-
-  const value = state.draft?.[key];
-
-  if (Array.isArray(value)) return value;
-
-  if (!hasValue(value)) return [];
-
-  return [value];
-}
-
-function validFlexibleNumber(field, raw) {
-
-  const text = String(raw).trim();
-
-  if (!text) return null;
-
-  const number = Number(text);
-
-  if (!Number.isFinite(number)) return null;
-
-  if (
-    field.min !== undefined &&
-    number < field.min
-  ) return null;
-
-  if (
-    field.max !== undefined &&
-    number > field.max
-  ) return null;
-
-  if (
-    field.step === "1" &&
-    !Number.isInteger(number)
-  ) return null;
-
-  return number;
-}
-
-function renderFlexibleField(field) {
-
-  const key = field.key;
-  const value = state.draft[key];
-  const multiple = Array.isArray(value);
-
-  const values = flexibleValues(key);
-
-  let control = "";
-
-  if (multiple) {
-
-    control = `
-
-      <div class="flexible-values">
-
-        ${values.map((item,index) => `
-
-          <span class="flexible-chip">
-
-            <span>${escapeHTML(item)}</span>
-
-            <button
-              type="button"
-              data-action="remove-flex"
-              data-field="${key}"
-              data-index="${index}"
-              aria-label="Remove answer">
-              ×
-            </button>
-
-          </span>
-
-        `).join("")}
-
-      </div>
-
-      <div class="flexible-entry">
-
-        <input
-          class="input"
-          type="text"
-          inputmode="text"
-          autocomplete="off"
-          spellcheck="false"
-          data-flex-input="${key}"
-          placeholder="Add another answer...">
-
-        <button
-          type="button"
-          class="button button-secondary button-small"
-          data-action="add-flex"
-          data-field="${key}">
-          Add
-        </button>
-
-      </div>
-
-    `;
-
-  } else {
-
-    if (field.type === "textarea") {
-
-      control = `
-
-        <textarea
-          class="textarea"
-          name="${key}"
-          data-flex-single="${key}"
-          placeholder="Write here...">${escapeHTML(value ?? "")}</textarea>
-
-      `;
-
-    } else {
-
-      control = `
-
-        <input
-          class="input"
-          type="text"
-          name="${key}"
-          data-flex-single="${key}"
-          inputmode="text"
-          autocomplete="off"
-          value="${escapeAttr(value ?? "")}"
-          ${field.required ? "required" : ""}
-          placeholder="—">
-
-      `;
-
-    }
-
-  }
-
-  return `
-
-    <div
-      class="field flexible-field ${
-        field.wide ? "form-wide" : ""
-      }"
-      data-flex-field="${key}">
-
-      <div class="flexible-heading">
-
-        <label>
-          ${escapeHTML(field.label)}
-          ${field.required ? "*" : ""}
-        </label>
-
-        <label class="flexible-toggle">
-
-          <input
-            type="checkbox"
-            data-flex-toggle="${key}"
-            ${multiple ? "checked" : ""}>
-
-          <span>Multiple</span>
-
-        </label>
-
-      </div>
-
-      ${control}
-
-    </div>
-
-  `;
-
-}
-
-function refreshFlexibleField(key) {
-
-  const field = CFG.fieldMap[key];
-
-  if (!field) return;
-
-  const current = document.querySelector(
-    `[data-flex-field="${key}"]`
-  );
-
-  if (!current) return;
-
-  current.outerHTML = renderFlexibleField(field);
-
-  queueDraftSave();
-}
-
-function toggleFlexibleField(key, enabled) {
-
-  const field = CFG.fieldMap[key];
-
-  if (!field || !isFlexibleField(field)) return;
-
-  const current = state.draft[key];
-
-  if (enabled) {
-
-    state.draft[key] =
-      Array.isArray(current)
-        ? [...current]
-        : hasValue(current)
-          ? [current]
-          : [];
-
-  } else {
-
-    const values = flexibleValues(key);
-
-    state.draft[key] =
-      values.length
-        ? values[0]
-        : field.type === "number"
-          ? null
-          : "";
-
-    if (values.length > 1) {
-
-      toast(
-        "Single-answer mode keeps the first value."
-      );
-
-    }
-
-  }
-
-  refreshFlexibleField(key);
-}
-
-function addFlexibleValue(key) {
-
-  const field = CFG.fieldMap[key];
-
-  if (!field || !isFlexibleField(field)) return;
-
-  const input = document.querySelector(
-    `[data-flex-input="${key}"]`
-  );
-
-  if (!input) return;
-
-  const raw = input.value.trim();
-
-  if (!raw) return;
-
-  let value = raw;
-
-  if (field.type === "number") {
-
-    value = validFlexibleNumber(field, raw);
-
-    if (value === null) {
-
-      toast(
-        `Enter a valid number for ${field.label}.`
-      );
-
-      input.focus();
-      return false;
-    }
-
-  }
-
-  const values = flexibleValues(key);
-
-  const exists = values.some(item =>
-    String(item).toLocaleLowerCase() ===
-    String(value).toLocaleLowerCase()
-  );
-
-  if (!exists) {
-
-    state.draft[key] = [...values, value];
-
-  }
-
-  input.value = "";
-
-  refreshFlexibleField(key);
-
-  document.querySelector(
-    `[data-flex-input="${key}"]`
-  )?.focus();
-
-  return true;
-}
-
-function removeFlexibleValue(key,index) {
-
-  const current = flexibleValues(key);
-
-  current.splice(index,1);
-
-  state.draft[key] = current;
-
-  refreshFlexibleField(key);
-}
-
-function updateFlexibleSingle(input) {
-
-  const key = input.dataset.flexSingle;
-
-  const field = CFG.fieldMap[key];
-
-  if (!field || !state.draft) return;
-
-  // Keep raw text while editing.
-  // Convert and validate when saving.
-  state.draft[key] = input.value;
-
-  const status = document.querySelector(
-    "#editor-status"
-  );
-
-  if (status) {
-    status.textContent = "Unsaved changes";
-  }
-
-  queueDraftSave();
-}
-
-function validateFlexibleFields() {
-
-  for (const field of CFG.fields) {
-
-    if (!isFlexibleField(field)) continue;
-
-    const value = state.draft[field.key];
-
-    if (
-      field.required &&
-      !hasValue(value)
-    ) {
-
-      toast(`${field.label} is required.`);
-
-      return false;
-    }
-
-    if (field.type !== "number") continue;
-
-    // Multiple numerical answers.
-    if (Array.isArray(value)) {
-
-      const numbers = [];
-
-      for (const item of value) {
-
-        const number = validFlexibleNumber(
-          field,
-          item
-        );
-
-        if (number === null) {
-
-          toast(
-            `Invalid number in ${field.label}.`
-          );
-
-          return false;
-        }
-
-        numbers.push(number);
-      }
-
-      state.draft[field.key] = [
-        ...new Set(numbers)
-      ];
-
-      continue;
-    }
-
-    // Single numerical answer.
-    if (!hasValue(value)) {
-
-      state.draft[field.key] = null;
-      continue;
-    }
-
-    const number = validFlexibleNumber(
-      field,
-      value
-    );
-
-    if (number === null) {
-
-      const input = document.querySelector(
-        `[data-flex-single="${field.key}"]`
-      );
-
-      if (input) {
-
-        const section = input.closest("details");
-
-        if (section) section.open = true;
-
-        input.focus();
-
-      }
-
-      toast(
-        `Invalid number in ${field.label}.`
-      );
-
-      return false;
-    }
-
-    state.draft[field.key] = number;
-
-  }
-
-  return true;
-}
-
-function renderInputField(field) {
-
-  const value = state.draft[field.key];
-   
-if (isFlexibleField(field)) {
-  return renderFlexibleField(field);
-}
-   
-  let input = "";
-
-  if (field.type === "text") {
-
-    input = `
-      <input
-        class="input"
-        type="text"
-        name="${field.key}"
-        value="${escapeAttr(value)}"
-        ${field.required ? "required" : ""}
-        autocomplete="off">
-    `;
-
-  }
-
-  
-else if (field.type === "number") {
-
-  input = `
-    <input
-      class="input"
-      type="text"
-      name="${field.key}"
-      value="${
-        value === null
-          ? ""
-          : escapeAttr(value)
-      }"
-      inputmode="text"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="—">
-  `;
-   
-  }
-
-  else if (field.type === "textarea") {
-
-    input = `
-      <textarea
-        class="textarea"
-        name="${field.key}">${escapeHTML(value)}</textarea>
-    `;
-
-  }
-
-  else if (field.type === "select") {
-
-    input = `
-      <select
-        class="select"
-        name="${field.key}">
-
-        ${makeOptions(
-          CFG[field.options],
-          value,
-          "Not specified"
-        )}
-
-      </select>
-    `;
-
-  }
-
-  else if (field.type === "multi") {
-
-    input = `
-      <div class="check-options">
-
-        ${CFG[field.options].map(option => `
-
-          <label class="check-option">
-
-            <input
-              type="checkbox"
-              name="${field.key}"
-              value="${escapeAttr(option)}"
-              ${(value || []).includes(option) ? "checked" : ""}>
-
-            <span>${escapeHTML(option)}</span>
-
-          </label>
-
-        `).join("")}
-
-      </div>
-    `;
-
-  }
-
-  else if (
-    field.type === "tags" ||
-    field.type === "bullets"
-  ) {
-
-    input = `
-      <div
-        class="tag-editor"
-        data-tag-field="${field.key}">
-
-        <div class="tags">
-          ${renderEditableTags(field.key)}
-        </div>
-
-        <div class="tag-editor-input">
-
-          <input
-            class="input"
-            type="text"
-            data-tag-input="${field.key}"
-            placeholder="${
-              field.type === "bullets"
-                ? "Write a point..."
-                : "Type a value..."
-            }"
-            autocomplete="off">
-
-          <button
-            type="button"
-            class="button button-secondary"
-            data-action="add-tag"
-            data-field="${field.key}">
-            Add
-          </button>
-
-        </div>
-
-        <div class="field-hint">
-          Press Enter or Add to include each item.
-        </div>
-
-      </div>
-    `;
-
-  }
-
-  else if (field.type === "links") {
-
-    const available = sortGems(state.gems)
-      .filter(gem => gem.id !== state.editingId);
-
-    input = `
-      <div
-        class="tag-editor"
-        data-link-field="${field.key}">
-
-        <div class="tags">
-          ${renderEditableTags(field.key)}
-        </div>
-
-        <div class="tag-editor-input">
-
-          <select
-            class="select"
-            data-link-select="${field.key}">
-
-            ${makeOptions(
-              available.map(gem => ({
-                value: gem.id,
-                label: gem.name
-              })),
-              "",
-              "Choose a saved gemstone"
-            )}
-
-          </select>
-
-          <button
-            type="button"
-            class="button button-secondary"
-            data-action="add-link"
-            data-field="${field.key}">
-            Add
-          </button>
-
-        </div>
-
-      </div>
-    `;
-
-  }
-
-  return `
-    <div class="field ${field.wide ? "form-wide" : ""}">
-
-      <label>
-        ${escapeHTML(field.label)}
-        ${field.required ? "*" : ""}
-      </label>
-
-      ${input}
-
-    </div>
-  `;
-
-}
-
-function renderEditableTags(key) {
-
-  const values = state.draft?.[key] || [];
-
-  return values.map((item, index) => {
-
-    const label =
-      key === "relatesTo"
-        ? getGemName(item)
-        : item;
-
-    return `
-      <span class="tag">
-
-        ${escapeHTML(label)}
-
-        <button
-          type="button"
-          class="tag-button"
-          aria-label="Remove ${escapeAttr(label)}"
-          data-action="remove-tag"
-          data-field="${key}"
-          data-index="${index}">
-          ×
-        </button>
-
-      </span>
-    `;
-
-  }).join("");
-
-}
-
-function refreshEditorTags(key) {
-
-  const selector =
-    key === "relatesTo"
-      ? `[data-link-field="${key}"] .tags`
-      : `[data-tag-field="${key}"] .tags`;
-
-  const container = $(selector);
-
-  if (container) {
-    container.innerHTML = renderEditableTags(key);
-  }
-
-  queueDraftSave();
-
-}
-
-function addTag(key) {
-
-  if (!state.draft) return;
-
-  const input = $(`[data-tag-input="${key}"]`);
-
-  if (!input) return;
-
-  const value = compact(input.value);
-
-  if (!value) return;
-
-  const current = state.draft[key] || [];
-
-  if (!current.some(
-    item => canonical(item) === canonical(value)
-  )) {
-
-    state.draft[key] = [...current, value];
-
-  }
-
-  input.value = "";
-
-  refreshEditorTags(key);
-
-  input.focus();
-
-}
-
-function addLink(key) {
-
-  if (!state.draft) return;
-
-  const input = $(`[data-link-select="${key}"]`);
-
-  if (!input || !input.value) return;
-
-  const id = input.value;
-
-  if (
-    id !== state.editingId &&
-    getGem(id) &&
-    !state.draft[key].includes(id)
-  ) {
-
-    state.draft[key].push(id);
-
-  }
-
-  input.value = "";
-
-  refreshEditorTags(key);
-
-}
-
-function removeTag(key, index) {
-
-  if (!state.draft || !Array.isArray(state.draft[key])) {
-    return;
-  }
-
-  state.draft[key].splice(index, 1);
-
-  refreshEditorTags(key);
-
-}
-
-function updateDraftField(input) {
-
-  if (!state.draft || !input.name) return;
-
-  const field = CFG.fieldMap[input.name];
-
-  if (!field) return;
-
-  if (field.type === "multi") {
-
-    state.draft[field.key] = [
-      ...$("#gem-form").querySelectorAll(
-        `input[name="${field.key}"]:checked`
-      )
-    ].map(item => item.value);
-
-  }
-
-  else if (field.type === "number") {
-
-    state.draft[field.key] =
-      input.value.trim() === ""
-        ? null
-        : Number(input.value);
-
-  }
-
-  else {
-
-    state.draft[field.key] = input.value;
-
-  }
-
-  $("#editor-status").textContent =
-    "Unsaved changes";
-
-  queueDraftSave();
-
-}
-
-function submitEditor(event) {
-
-  event.preventDefault();
-
-  if (!state.draft) return;
-
-  // Include a typed tag even if Add wasn't pressed.
-  for (const input of $$("[data-tag-input]")) {
-
-    const value = compact(input.value);
-
-    if (!value) continue;
-
-    const key = input.dataset.tagInput;
-
-    if (!state.draft[key].some(
-      item => canonical(item) === canonical(value)
-    )) {
-      state.draft[key].push(value);
-    }
-
-    input.value = "";
-
-  }
-
-  if (
-    !state.draft.name ||
-    !state.draft.name.trim()
-  ) {
-
-    toast("Please enter a gemstone name.");
-
-    const identity =
-      $(".editor-section");
-
-    if (identity) identity.open = true;
-
-    $('[name="name"]')?.focus();
-
-    return;
-
-  }
-
-
-/* Include any answer not yet added */
-
-for (const input of document.querySelectorAll(
-  "[data-flex-input]"
-)) {
-
-  if (!input.value.trim()) continue;
-
-  const added = addFlexibleValue(
-    input.dataset.flexInput
-  );
-
-  if (added === false) return;
-}
-
-/* Validate flexible fields */
-
-if (!validateFlexibleFields()) {
-  return;
-}
-   
-  const saved = saveGem(state.draft);
-
-  if (!saved) return;
-
-  closeEditor();
-
-  state.page = "profile";
-
-  render();
-
-}
-
-function recoverDraft() {
-
-  const saved = readDraft();
-
-  if (!saved) {
-    toast("No saved draft found.");
-    return;
-  }
-
-  openEditor(
-    saved.editingId && getGem(saved.editingId)
-      ? saved.editingId
-      : null,
-    saved.gem
-  );
-
-}
-
-
-/* =========================================
-   MAIN NAVIGATION
-========================================= */
-
-function navigate(page) {
-
-  const allowed = [
-    "library",
-    "profile",
-    "compare",
-    "relations",
-    "statistics"
-  ];
-
-  if (!allowed.includes(page)) return;
-
-  state.page = page;
-
-  render();
-
-  window.scrollTo(0, 0);
-
-}
-
-function openProfile(id) {
-
-  if (!getGem(id)) return;
-
-  state.selectedGem = id;
-
-  navigate("profile");
-
-}
-
-function refreshSelections() {
-
-  const ids = new Set(
-    state.gems.map(gem => gem.id)
-  );
-
-  if (!ids.has(state.compareA)) {
-    state.compareA = state.gems[0]?.id || "";
-  }
-
-  if (!ids.has(state.compareB)) {
-    state.compareB =
-      state.gems.find(gem =>
-        gem.id !== state.compareA
-      )?.id || "";
-  }
-
-  if (!ids.has(state.relationId)) {
-    state.relationId = state.gems[0]?.id || "";
-  }
-
-  state.multiIds = state.multiIds.filter(
-    id => ids.has(id)
-  );
-
-  if (
-    state.selectedGem &&
-    !ids.has(state.selectedGem)
-  ) {
-    state.selectedGem = null;
-  }
-
-}
-
-function render() {
-
-  refreshSelections();
-
-  const pageLabels = {
-    library: "Library",
-    profile: "Gemstone Profile",
-    compare: "Comparison",
-    relations: "Relationships",
-    statistics: "Statistics"
-  };
-
-  $("#current-page-label").textContent =
-    pageLabels[state.page];
-
-  const navPage =
-    state.page === "profile"
-      ? "library"
-      : state.page;
-
-  $$("[data-page]").forEach(button => {
-
-    button.classList.toggle(
-      "active",
-      button.dataset.page === navPage
-    );
-
-  });
-
-  $("#sidebar-count").textContent =
-    state.gems.length;
-
-  switch (state.page) {
-
-    case "library":
-      main.innerHTML = renderLibrary();
-      break;
-
-    case "profile":
-      main.innerHTML = renderProfile();
-      break;
-
-    case "compare":
-      main.innerHTML = renderComparison();
-      break;
-
-    case "relations":
-      main.innerHTML = renderRelationships();
-      break;
-
-    case "statistics":
-      main.innerHTML = renderStatistics();
-      break;
-
-    default:
-      main.innerHTML = renderLibrary();
-
-  }
-
-}
-
-
-/* =========================================
-   LIBRARY PAGE
-========================================= */
-
-function filteredLibrary() {
-
-  const search = canonical(state.librarySearch);
-
-  let gems = state.gems.filter(gem => {
-
-    const matchesRarity =
-      !state.libraryRarity ||
-      gem.rarity === state.libraryRarity;
-
-    if (!matchesRarity) return false;
-
-    if (!search) return true;
-
-    const searchable = CFG.fields
-      .filter(field => field.type !== "links")
-      .map(field => {
-
-        const value = gem[field.key];
-
-        return Array.isArray(value)
-          ? value.join(" ")
-          : String(value ?? "");
-
-      })
-      .join(" ");
-
-    return canonical(searchable).includes(search);
-
-  });
-
-  if (state.librarySort === "recent") {
-
-    gems.sort((a, b) =>
-      String(b.updatedAt).localeCompare(
-        String(a.updatedAt)
-      )
-    );
-
-  }
-
-  else if (state.librarySort === "rarity") {
-
-    const rank = rarity =>
-      CFG.rarities.indexOf(rarity);
-
-    gems.sort((a, b) =>
-      rank(b.rarity) - rank(a.rarity)
-    );
-
-  }
-
-  else {
-    gems = sortGems(gems);
-  }
-
-  return gems;
-
-}
-
-function renderLibrary() {
-
-  const draft = readDraft();
-
-  return `
-
-    <div class="page-heading">
-
-      <div>
-        <div class="eyebrow">COLLECTION</div>
-        <h1>Gemstone Library</h1>
-        <p>
-          ${state.gems.length} saved gemstone profiles.
-        </p>
-      </div>
-
-      <div class="page-actions">
-
-        <button
-          class="button button-secondary"
-          data-action="export">
-          Export
-        </button>
-
-        <button
-          class="button button-secondary"
-          data-action="import">
-          Import
-        </button>
-
-      </div>
-
-    </div>
-
-    ${draft ? `
-
-      <div class="panel" style="margin-bottom:18px;">
-
-        <div class="panel-title">
-          <h3>Unfinished Draft</h3>
-        </div>
-
-        <p class="muted" style="font-size:12px;">
-          An unfinished profile was preserved in this browser.
-        </p>
-
-        <div class="page-actions">
-
-          <button
-            class="button button-secondary"
-            data-action="recover-draft">
-            Resume Draft
-          </button>
-
-          <button
-            class="button button-ghost"
-            data-action="discard-draft">
-            Discard Draft
-          </button>
-
-        </div>
-
-      </div>
-
-    ` : ""}
-
-    <div class="library-toolbar">
-
-      <input
-        id="library-search"
-        class="input"
-        type="search"
-        placeholder="Search gemstones and their properties..."
-        value="${escapeAttr(state.librarySearch)}">
-
-      <select
-        id="library-rarity"
-        class="select">
-
-        ${makeOptions(
-          CFG.rarities,
-          state.libraryRarity,
-          "All rarities"
-        )}
-
-      </select>
-
-      <select
-        id="library-sort"
-        class="select">
-
-        ${makeOptions([
-          {value:"name",label:"Name A–Z"},
-          {value:"recent",label:"Recently Updated"},
-          {value:"rarity",label:"Rarity"}
-        ],state.librarySort,"Sort")}
-
-      </select>
-
-    </div>
-
-    <div class="result-count" id="library-result-count"></div>
-
-    <div id="library-results"></div>
-
-  `;
-
-}
-
-function renderLibraryResults() {
-
-  const gems = filteredLibrary();
-
-  const count = $("#library-result-count");
-  const container = $("#library-results");
-
-  if (!count || !container) return;
-
-  count.textContent =
-    `${gems.length} of ${state.gems.length} gemstones`;
-
-  if (!gems.length) {
-
-    container.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-symbol">◇</div>
-        <h2>${
-          state.gems.length
-            ? "No matching gemstones"
-            : "Your library is empty"
-        }</h2>
-
-        <p>
-          ${
-            state.gems.length
-              ? "Try another search or filter."
-              : "Create your first gemstone profile to begin."
-          }
-        </p>
-
-        <button
-          class="button button-primary"
-          data-action="new-gem">
-          + New Gemstone
-        </button>
-      </div>
-    `;
-
-    return;
-
-  }
-
-  container.innerHTML = `
-
-    <div class="library-grid">
-
-      ${gems.map(gem => `
-
-        <article class="gem-card">
-
-          <div class="gem-card-top">
-
-            <div>
-              <h3>${escapeHTML(gem.name)}</h3>
-
-              <div class="gem-card-subtitle">
-                ${escapeHTML(gem.title || "Gemstone")}
-              </div>
-            </div>
-
-            <div class="gem-card-symbol">◇</div>
-
-          </div>
-
-          <div class="gem-card-details">
-
-            <div class="gem-card-detail">
-              <span>Rarity</span>
-              <span>${escapeHTML(gem.rarity || "—")}</span>
-            </div>
-
-            <div class="gem-card-detail">
-              <span>Species</span>
-              <span>${escapeHTML(gem.mineralSpecies || "—")}</span>
-            </div>
-
-            <div class="gem-card-detail">
-              <span>Mohs</span>
-              <span>${gem.mohs ?? "—"}</span>
-            </div>
-
-          </div>
-
-          <div class="tags gem-card-tags">
-            ${tagsHTML(gem.classifications.slice(0,3))}
-          </div>
-
-          <div class="gem-card-actions">
-
-            <button
-              class="button button-primary button-small"
-              data-action="view-gem"
-              data-id="${escapeAttr(gem.id)}">
-              Open
-            </button>
-
-            <button
-              class="button button-secondary button-small"
-              data-action="edit-gem"
-              data-id="${escapeAttr(gem.id)}">
-              Edit
-            </button>
-
-            <button
-              class="button button-ghost button-small"
-              data-action="compare-gem"
-              data-id="${escapeAttr(gem.id)}">
-              Compare
-            </button>
-
-          </div>
-
-        </article>
-
-      `).join("")}
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================
-   PROFILE PAGE
-========================================= */
-
-function formatFieldValue(gem, field) {
-
-  const value = gem[field.key];
-
-  if (!hasValue(value)) {
-    return `<span class="empty-note">Not specified</span>`;
-  }
-
-/* Display optional multiple answers */
-
-if (
-  isFlexibleField(field) &&
-  Array.isArray(value)
-) {
-
-  return `
-    <div class="tags flexible-profile-tags">
-
-      ${value.map(item => `
-        <span class="tag">
-          ${escapeHTML(item)}
-        </span>
-      `).join("")}
-
-    </div>
-  `;
-}
-   
-  if (field.type === "number") {
-    return escapeHTML(formatNumber(value, 5));
-  }
-
-  if (field.type === "tags" ||
-      field.type === "multi") {
-
-    return `
-      <div class="tags">
-        ${tagsHTML(value)}
-      </div>
-    `;
-
-  }
-
-  if (field.type === "links") {
-
-    return `
-      <div class="tags">
-
-        ${value.map(id => {
-
-          const linked = getGem(id);
-
-          if (!linked) return "";
-
-          return `
-            <button
-              class="tag"
-              data-action="view-gem"
-              data-id="${escapeAttr(id)}">
-              ${escapeHTML(linked.name)}
-            </button>
-          `;
-
-        }).join("")}
-
-      </div>
-    `;
-
-  }
-
-  if (field.type === "bullets") {
-
-    return `
-      <ul class="profile-list">
-
-        ${value.map(item => `
-          <li>${escapeHTML(item)}</li>
-        `).join("")}
-
-      </ul>
-    `;
-
-  }
-
-  return escapeHTML(value);
-
-}
-
-
-function renderProfile() {
-
-  const gem = getGem(state.selectedGem);
-
-  if (!gem) {
-    return panelEmpty("Gemstone not found.");
-  }
-
-  const row = (key) => {
-
-    const field = CFG.fieldMap[key];
-
-    if (!field || !hasValue(gem[key])) return "";
-
-    return `
-      <div class="sheet-row">
-
-        <div class="sheet-label">
-          ${escapeHTML(field.label)}
-        </div>
-
-        <div class="sheet-value">
-          ${formatFieldValue(gem, field)}
-        </div>
-
-      </div>
-    `;
-  };
-
-  const section = (title, keys, extra = "") => {
-
-    const visible = keys.filter(
-      key => hasValue(gem[key])
-    );
-
-    if (!visible.length) return "";
-
-    return `
-      <section class="sheet-section ${extra}">
-
-        <div class="sheet-section-heading">
-          ${escapeHTML(title)}
-        </div>
-
-        <div class="sheet-rows">
-          ${visible.map(row).join("")}
-        </div>
-
-      </section>
-    `;
-  };
-
-  return `
-
-    <div class="sheet-toolbar">
-
-      <button
-        class="button button-ghost"
-        data-action="go-library">
-        ← Library
-      </button>
-
-      <div class="page-actions">
-
-        <button
-          class="button button-secondary button-small"
-          data-action="compare-gem"
-          data-id="${escapeAttr(gem.id)}">
-          Compare
-        </button>
-
-        <button
-          class="button button-secondary button-small"
-          data-action="relations-gem"
-          data-id="${escapeAttr(gem.id)}">
-          Relations
-        </button>
-
-        <button
-          class="button button-primary button-small"
-          data-action="edit-gem"
-          data-id="${escapeAttr(gem.id)}">
-          Edit
-        </button>
-
-      </div>
-
-    </div>
-
-    <article class="gem-sheet">
-
-      <header class="sheet-header">
-
-        <div class="eyebrow">GEMSTONE RECORD</div>
-
-        <h1>${escapeHTML(gem.name)}</h1>
-
-        ${gem.title ? `
-          <div class="sheet-subtitle">
-            ${escapeHTML(gem.title)}
-          </div>
-        ` : ""}
-
-        <div class="sheet-header-tags">
-
-          ${tagsHTML(gem.classifications, true)}
-
-          ${gem.rarity
-            ? tagHTML(gem.rarity)
-            : ""
-          }
-
-        </div>
-
-      </header>
-
-      <div class="sheet-grid">
-
-        <div class="sheet-column">
-
-          ${section(
-            "Mineral Family",
-            [
-              "mineralGroup",
-              "mineralSpecies",
-              "relatesTo"
-            ]
-          )}
-
-          ${section(
-            "Physical Properties",
-            [
-              "mohs",
-              "density",
-              "crystalSystem",
-              "cleavage",
-              "fracture",
-              "streak",
-              "tenacity",
-              "luster",
-              "transparency"
-            ]
-          )}
-
-          ${section(
-            "Optical Properties",
-            [
-              "refractiveIndex",
-              "birefringence",
-              "pleochroism",
-              "dispersion",
-              "otherEffects"
-            ]
-          )}
-
-        </div>
-
-        <div class="sheet-column">
-
-          ${section(
-            "Appearance",
-            ["colors"]
-          )}
-
-          ${section(
-            "Origin & Discovery",
-            [
-              "countries",
-              "discoveryYear",
-              "discoveryLocation",
-              "discoverer",
-              "etymology"
-            ]
-          )}
-
-          ${section(
-            "Associations",
-            [
-              "zodiacStone",
-              "planetaryStone",
-              "birthStone",
-              "anniversaryStone",
-              "meaning",
-              "connectedWith"
-            ]
-          )}
-
-        </div>
-
-      </div>
-
-      ${hasValue(gem.otherFacts) ? `
-
-        <section class="sheet-notes">
-
-          <div class="sheet-section-heading">
-            Other Facts
-          </div>
-
-          ${formatFieldValue(
-            gem,
-            CFG.fieldMap.otherFacts
-          )}
-
-        </section>
-
-      ` : ""}
-
-      <footer class="sheet-footer">
-
-        <span>
-          Last updated:
-          ${gem.updatedAt
-            ? escapeHTML(
-                new Date(gem.updatedAt)
-                  .toLocaleDateString()
-              )
-            : "—"
-          }
-        </span>
-
-        <div class="page-actions">
-
-          <button
-            class="button button-ghost button-small"
-            data-action="duplicate-gem"
-            data-id="${escapeAttr(gem.id)}">
-            Duplicate
-          </button>
-
-          <button
-            class="button button-ghost button-small"
-            data-action="delete-gem"
-            data-id="${escapeAttr(gem.id)}">
-            Delete
-          </button>
-
-        </div>
-
-      </footer>
-
-    </article>
-
-  `;
-
-}
-
-/* =========================================
-   SIMILARITY ENGINE
-   EVERY COMPARABLE FIELD HAS EQUAL WEIGHT
-========================================= */
-
-function normalizedSet(values) {
-
-  const source =
-    Array.isArray(values)
-      ? values
-      : [values];
-
-  return new Set(
-    source
-      .filter(hasValue)
-      .map(canonical)
-      .filter(Boolean)
-  );
-
-}
-
-function compareField(field, valueA, valueB) {
-
-  if (!hasValue(valueA) || !hasValue(valueB)) {
-
-    return {
-      comparable: false,
-      score: null,
-      status: "unknown"
-    };
-  }
-
-/* Optional multiple answers */
-
-if (
-  isFlexibleField(field) &&
-  (
-    Array.isArray(valueA) ||
-    Array.isArray(valueB)
-  )
-) {
-
-  const a = normalizedSet(valueA);
-  const b = normalizedSet(valueB);
-
-  const union = new Set([...a,...b]);
-
-  let matches = 0;
-
-  for (const item of a) {
-    if (b.has(item)) matches++;
-  }
-
-  const score = union.size
-    ? matches / union.size
-    : 0;
-
-  return {
-    comparable: true,
-    score,
-    status:
-      score >= .999999
-        ? "match"
-        : score <= .000001
-          ? "different"
-          : "partial"
-  };
-     
-  }
-
-  let score = 0;
-
-  if (field.type === "number") {
-
-    const a = Number(valueA);
-    const b = Number(valueB);
-
-    if (
-      !Number.isFinite(a) ||
-      !Number.isFinite(b)
-    ) {
-
-      return {
-        comparable: false,
-        score: null,
-        status: "unknown"
-      };
-
-    }
-
-    // Fixed scale for Mohs; relative distance
-    // for other numeric properties.
-
-    const scale = field.scale ||
-      Math.max(Math.abs(a),Math.abs(b),1);
-
-    score = clamp(
-      1 - Math.abs(a-b) / scale,
-      0,
-      1
-    );
-
-  }
-
-  else if (
-    field.type === "multi" ||
-    field.type === "tags" ||
-    field.type === "bullets"
-  ) {
-
-    const a = normalizedSet(valueA);
-    const b = normalizedSet(valueB);
-
-    const union = new Set([...a,...b]);
-
-    let common = 0;
-
-    for (const item of a) {
-      if (b.has(item)) common++;
-    }
-
-    score = union.size
-      ? common / union.size
-      : 0;
-
-  }
-
-  else {
-
-    score =
-      canonical(valueA) === canonical(valueB)
-        ? 1
-        : 0;
-
-  }
-
-  return {
-    comparable: true,
-    score,
-
-    status:
-      score >= .999999
-        ? "match"
-        : score <= .000001
-          ? "different"
-          : "partial"
-  };
-
-}
-
-function compareGems(gemA, gemB) {
-
-  if (!gemA || !gemB) return null;
-
-  const results = [];
-
-  let total = 0;
-  let compared = 0;
-
-  let matches = 0;
-  let partials = 0;
-  let differences = 0;
-
-  for (const field of CFG.comparableFields) {
-
-    const result = compareField(
-      field,
-      gemA[field.key],
-      gemB[field.key]
-    );
-
-    results.push({
-      field,
-      valueA: gemA[field.key],
-      valueB: gemB[field.key],
-      ...result
-    });
-
-    if (!result.comparable) continue;
-
-    total += result.score;
-    compared++;
-
-    if (result.status === "match") matches++;
-    if (result.status === "partial") partials++;
-    if (result.status === "different") differences++;
-
-  }
-
-  return {
-    score: compared
-      ? round(total / compared * 100,1)
-      : null,
-
-    compared,
-    matches,
-    partials,
-    differences,
-    results
-  };
-
-}
-
-function similarityText(result) {
-
-  if (!result || result.score === null) {
-    return "Not enough data";
-  }
-
-  return `${formatNumber(result.score,1)}%`;
-
-}
-
-function statusHTML(result) {
-
-  const labels = {
-    match: "Match",
-    partial: "Partial",
-    different: "Different",
-    unknown: "No data"
-  };
-
-  return `
-    <span class="compare-status status-${result.status}">
-      ${labels[result.status]}
-    </span>
-  `;
-
-}
-
-
-/* =========================================
-   COMPARISON PAGE
-========================================= */
-
-function renderComparison() {
-
-  const gemA = getGem(state.compareA);
-  const gemB = getGem(state.compareB);
-
-  return `
-
-    <div class="page-heading">
-
-      <div>
-        <div class="eyebrow">ANALYSIS</div>
-        <h1>Gemstone Comparison</h1>
-        <p>
-          Every comparable field contributes equally.
-          Missing information is excluded.
-        </p>
-      </div>
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-        <h2>Direct Comparison</h2>
-      </div>
-
-      <div class="compare-selectors">
-
-        <div class="field">
-          <label>Gemstone A</label>
-
-          <select
-            id="compare-a"
-            class="select">
-
-            ${gemOptions(state.compareA)}
-
-          </select>
-
-        </div>
-
-        <div class="field">
-          <label>Gemstone B</label>
-
-          <select
-            id="compare-b"
-            class="select">
-
-            ${gemOptions(state.compareB)}
-
-          </select>
-
-        </div>
-
-      </div>
-
-      <div class="divider"></div>
-
-      ${
-        gemA && gemB
-          ? renderDirectComparison(gemA,gemB)
-          : panelEmpty(
-              "Create at least two gemstones to begin comparing."
-            )
-      }
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-        <h2>Multiple Gemstone Comparison</h2>
-      </div>
-
-      <p class="section-description">
-        Select several gemstones to compare their properties
-        side by side.
-      </p>
-
-      ${renderMultiComparison()}
-
-    </div>
-
-  `;
-
-}
-
-function renderDirectComparison(a,b) {
-
-  const result = compareGems(a,b);
-
-  let lastSection = "";
-
-  const rows = result.results.map(item => {
-
-    const section = CFG.sections.find(
-      section => section.fields.some(
-        field => field.key === item.field.key
-      )
-    );
-
-    let heading = "";
-
-    if (section && section.id !== lastSection) {
-
-      lastSection = section.id;
-
-      heading = `
-        <tr class="comparison-group-title">
-          <td colspan="4">
-            ${escapeHTML(section.title)}
-          </td>
-        </tr>
-      `;
-
-    }
-
-    return heading + `
-
-      <tr>
-
-        <td>${escapeHTML(item.field.label)}</td>
-
-        <td>${formatFieldValue(a,item.field)}</td>
-
-        <td>${formatFieldValue(b,item.field)}</td>
-
-        <td>${statusHTML(item)}</td>
-
-      </tr>
-
-    `;
-
-  }).join("");
-
-  return `
-
-    <div class="compare-summary">
-
-      <div class="compare-score">
-        ${result.score === null ? "—" : result.score}
-        <small>${result.score === null ? "" : "%"}</small>
-      </div>
-
-      <div style="flex:1;min-width:0;">
-
-        <strong>
-          ${escapeHTML(a.name)}
-          &amp;
-          ${escapeHTML(b.name)}
-        </strong>
-
-        <div class="compare-meter">
-          <div
-            class="compare-meter-fill"
-            style="width:${result.score ?? 0}%">
-          </div>
-        </div>
-
-        <div class="muted" style="font-size:11px;">
-          ${result.compared} compared fields ·
-          ${result.matches} matches ·
-          ${result.partials} partial ·
-          ${result.differences} differences
-        </div>
-
-      </div>
-
-    </div>
-
-    <p class="chart-note">
-      Similarity is calculated only from fields where
-      both gemstones have information. Manual relationship
-      links do not affect this score.
-    </p>
-
-    <div class="comparison-table-wrap">
-
-      <table class="data-table">
-
-        <thead>
-          <tr>
-            <th>Property</th>
-            <th>${escapeHTML(a.name)}</th>
-            <th>${escapeHTML(b.name)}</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-
-        <tbody>${rows}</tbody>
-
-      </table>
-
-    </div>
-
-  `;
-
-}
-
-function renderMultiComparison() {
-
-  if (!state.gems.length) {
-    return panelEmpty("No gemstones available.");
-  }
-
-  const selected = state.multiIds
-    .map(getGem)
-    .filter(Boolean);
-
-  return `
-
-    <div class="multi-gem-grid">
-
-      ${sortGems(state.gems).map(gem => `
-
-        <label class="multi-option">
-
-          <input
-            type="checkbox"
-            data-multi-id="${escapeAttr(gem.id)}"
-            ${
-              state.multiIds.includes(gem.id)
-                ? "checked"
-                : ""
-            }>
-
-          <span>${escapeHTML(gem.name)}</span>
-
-        </label>
-
-      `).join("")}
-
-    </div>
-
-    <div class="divider"></div>
-
-    ${
-      selected.length >= 2
-        ? renderMultiTable(selected)
-        : `
-          <p class="muted">
-            Select at least two gemstones.
-          </p>
-        `
-    }
-
-  `;
-
-}
-
-function renderMultiTable(gems) {
-
-  const fields = CFG.comparableFields;
-
-  return `
-
-    <div class="comparison-table-wrap">
-
-      <table class="data-table">
-
-        <thead>
-          <tr>
-            <th>Property</th>
-
-            ${gems.map(gem => `
-              <th>${escapeHTML(gem.name)}</th>
-            `).join("")}
-
-          </tr>
-        </thead>
-
-        <tbody>
-
-          ${fields.map(field => `
-
-            <tr>
-
-              <td>
-                <strong>${escapeHTML(field.label)}</strong>
-              </td>
-
-              ${gems.map(gem => `
-                <td>${formatFieldValue(gem,field)}</td>
-              `).join("")}
-
-            </tr>
-
-          `).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-    <div class="divider"></div>
-
-    <h3>Pairwise Similarity</h3>
-
-    <div class="table-scroll">
-
-      <table class="data-table">
-
-        <thead>
-          <tr>
-            <th>Gemstones</th>
-            <th>Similarity</th>
-            <th>Compared Fields</th>
-          </tr>
-        </thead>
-
-        <tbody>
-
-          ${gems.flatMap((a,index) =>
-            gems.slice(index+1).map(b => {
-
-              const result = compareGems(a,b);
-
-              return `
-                <tr>
-                  <td>
-                    ${escapeHTML(a.name)}
-                    /
-                    ${escapeHTML(b.name)}
-                  </td>
-
-                  <td>
-                    <strong>
-                      ${similarityText(result)}
-                    </strong>
-                  </td>
-
-                  <td>${result.compared}</td>
-                </tr>
-              `;
-
-            })
-          ).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  `;
-
-}
-
-
-/* =========================================
-   RELATIONSHIP ENGINE
-========================================= */
-
-function relationshipResults(gem) {
-
-  if (!gem) return [];
-
-  const results = state.gems
-    .filter(other => other.id !== gem.id)
-    .map(other => {
-
-      const comparison = compareGems(gem,other);
-
-      const directLink =
-        gem.relatesTo.includes(other.id) ||
-        other.relatesTo.includes(gem.id);
-
-      const shared = comparison.results
-        .filter(item =>
-          item.comparable &&
-          item.score > 0
-        )
-        .map(item => ({
-          key: item.field.key,
-          label: item.field.label,
-          score: item.score
-        }));
-
-      return {
-        gem: other,
-        comparison,
-        directLink,
-        shared
-      };
-
-    });
-
-  results.sort((a,b) => {
-
-    if (state.relationSort === "manual") {
-
-      if (a.directLink !== b.directLink) {
-        return a.directLink ? -1 : 1;
-      }
-
-    }
-
-    if (state.relationSort === "name") {
-      return alphabetically(
-        a.gem.name,
-        b.gem.name
-      );
-    }
-
-    const aScore = a.comparison.score ?? -1;
-    const bScore = b.comparison.score ?? -1;
-
-    return bScore - aScore ||
-      b.comparison.compared - a.comparison.compared ||
-      alphabetically(a.gem.name,b.gem.name);
-
-  });
-
-  return results;
-
-}
-
-function manualNeighbors(id) {
-
-  const linked = new Set();
-
-  const gem = getGem(id);
-
-  if (!gem) return [];
-
-  for (const otherId of gem.relatesTo) {
-
-    if (getGem(otherId)) {
-      linked.add(otherId);
-    }
-
-  }
-
-  for (const other of state.gems) {
-
-    if (other.relatesTo.includes(id)) {
-      linked.add(other.id);
-    }
-
-  }
-
-  linked.delete(id);
-
-  return [...linked];
-
-}
-
-function shortestManualPath(start,end) {
-
-  if (!getGem(start) || !getGem(end)) {
-    return null;
-  }
-
-  if (start === end) return [start];
-
-  const queue = [[start]];
-  const visited = new Set([start]);
-
-  while (queue.length) {
-
-    const path = queue.shift();
-
-    const current = path[path.length-1];
-
-    for (const neighbor of manualNeighbors(current)) {
-
-      if (visited.has(neighbor)) continue;
-
-      const next = [...path,neighbor];
-
-      if (neighbor === end) {
-        return next;
-      }
-
-      visited.add(neighbor);
-      queue.push(next);
-
-    }
-
-  }
-
-  return null;
-
-}
-
-function renderRelationshipGraph(gem,results) {
-
-  const visible = results
-    .filter(item =>
-      item.comparison.score !== null ||
-      item.directLink
-    )
-    .slice(0,8);
-
-  if (!visible.length) {
-
-    return panelEmpty(
-      "Add more gemstone information to discover relationships."
-    );
-
-  }
-
-  const centerX = 250;
-  const centerY = 185;
-  const radiusX = 188;
-  const radiusY = 138;
-
-  let lines = "";
-  let nodes = "";
-
-  visible.forEach((item,index) => {
-
-    const angle =
-      (Math.PI * 2 * index / visible.length) -
-      Math.PI / 2;
-
-    const x = centerX + Math.cos(angle)*radiusX;
-    const y = centerY + Math.sin(angle)*radiusY;
-
-    const score = item.comparison.score;
-
-    const strength =
-      score === null
-        ? .15
-        : .15 + score / 100 * .65;
-
-    lines += `
-      <line
-        x1="${centerX}"
-        y1="${centerY}"
-        x2="${x}"
-        y2="${y}"
-        stroke="#879a83"
-        stroke-width="${item.directLink ? 2.8 : 1.5}"
-        stroke-opacity="${strength}"
-        ${item.directLink ? "" : 'stroke-dasharray="4 4"'}
-      />
-    `;
-
-    const label =
-      item.gem.name.length > 17
-        ? item.gem.name.slice(0,16) + "…"
-        : item.gem.name;
-
-    nodes += `
-      <g>
-
-        <circle
-          cx="${x}"
-          cy="${y}"
-          r="24"
-          fill="#edf1eb"
-          stroke="${item.directLink ? "#536451" : "#ccd4c8"}"
-          stroke-width="${item.directLink ? 2.5 : 1}"
-        />
-
-        <text
-          x="${x}"
-          y="${y+4}"
-          text-anchor="middle"
-          font-size="16"
-          fill="#536451">
-          ◇
-        </text>
-
-        <text
-          x="${x}"
-          y="${y+39}"
-          text-anchor="middle"
-          font-size="10"
-          fill="#414741">
-          ${escapeHTML(label)}
-        </text>
-
-        <text
-          x="${x}"
-          y="${y+51}"
-          text-anchor="middle"
-          font-size="9"
-          fill="#879087">
-          ${score === null ? "No data" : score+"%"}
-        </text>
-
-      </g>
-    `;
-
-  });
-
-  return `
-
-    <div class="relationship-graph">
-
-      <svg
-        viewBox="0 0 500 390"
-        role="img"
-        aria-label="Relationship overview for ${escapeAttr(gem.name)}">
-
-        ${lines}
-
-        ${nodes}
-
-        <circle
-          cx="${centerX}"
-          cy="${centerY}"
-          r="34"
-          fill="#536451"
-        />
-
-        <text
-          x="${centerX}"
-          y="${centerY+5}"
-          font-size="23"
-          text-anchor="middle"
-          fill="white">
-          ◇
-        </text>
-
-        <text
-          x="${centerX}"
-          y="${centerY+53}"
-          font-size="13"
-          font-weight="600"
-          text-anchor="middle"
-          fill="#303b2e">
-          ${escapeHTML(
-            gem.name.length > 23
-              ? gem.name.slice(0,22)+"…"
-              : gem.name
-          )}
-        </text>
-
-      </svg>
-
-    </div>
-
-    <p class="chart-note">
-      Solid lines indicate manual relationships.
-      Dashed lines indicate calculated similarity.
-      The map displays up to eight related gemstones.
-    </p>
-
-  `;
-
-}
-
-function renderRelationships() {
-
-  const gem = getGem(state.relationId);
-
-  const results = relationshipResults(gem);
-
-  return `
-
-    <div class="page-heading">
-
-      <div>
-        <div class="eyebrow">CONNECTIONS</div>
-        <h1>Relationships</h1>
-        <p>
-          Explore similarities, manually linked gemstones,
-          and shared characteristics.
-        </p>
-      </div>
-
-    </div>
-
-    <div class="panel">
-
-      <div class="control-row">
-
-        <div class="field">
-          <label>Selected Gemstone</label>
-
-          <select
-            class="select"
-            id="relation-gem">
-
-            ${gemOptions(state.relationId)}
-
-          </select>
-
-        </div>
-
-        <div class="field">
-          <label>Order By</label>
-
-          <select
-            class="select"
-            id="relation-sort">
-
-            ${makeOptions([
-              {value:"similarity",label:"Closest Similarity"},
-              {value:"manual",label:"Manual Relationships"},
-              {value:"name",label:"Name"}
-            ],state.relationSort)}
-
-          </select>
-
-        </div>
-
-      </div>
-
-      ${
-        gem
-          ? renderRelationshipContents(gem,results)
-          : panelEmpty(
-              "Create gemstones to explore relationships."
-            )
-      }
-
-    </div>
-
-  `;
-
-}
-
-function renderRelationshipContents(gem,results) {
-
-  return `
-
-    <div class="panel-grid">
-
-      <div>
-
-        <h3>Relationship Map</h3>
-
-        ${renderRelationshipGraph(gem,results)}
-
-      </div>
-
-      <div>
-
-        <h3>Closest Gemstones</h3>
-
-        <div class="relationship-list">
-
-          ${
-            results.length
-              ? results.map(item => {
-
-                const comparison = item.comparison;
-
-                return `
-
-                  <div class="relationship-entry">
-
-                    <div class="relationship-entry-header">
-
-                      <button
-                        class="link-button relationship-name"
-                        data-action="view-gem"
-                        data-id="${escapeAttr(item.gem.id)}">
-                        ${escapeHTML(item.gem.name)}
-                      </button>
-
-                      <span class="relationship-score">
-                        ${similarityText(comparison)}
-                      </span>
-
-                    </div>
-
-                    <div class="compare-meter">
-
-                      <div
-                        class="compare-meter-fill"
-                        style="width:${comparison.score ?? 0}%">
-                      </div>
-
-                    </div>
-
-                    <div class="relationship-meta">
-
-                      ${comparison.compared} comparable fields
-
-                      ${
-                        item.directLink
-                          ? " · Manual link"
-                          : ""
-                      }
-
-                    </div>
-
-                    <div
-                      class="tags"
-                      style="margin-top:9px;">
-
-                      ${item.shared
-                        .slice(0,5)
-                        .map(property =>
-                          tagHTML(property.label)
-                        ).join("")}
-
-                    </div>
-
-                    <div class="page-actions" style="margin-top:10px;">
-
-                      <button
-                        class="button button-ghost button-small"
-                        data-action="compare-pair"
-                        data-a="${escapeAttr(gem.id)}"
-                        data-b="${escapeAttr(item.gem.id)}">
-                        Compare
-                      </button>
-
-                    </div>
-
-                  </div>
-
-                `;
-
-              }).join("")
-              : `<p class="muted">No other gemstones yet.</p>`
-          }
-
-        </div>
-
-      </div>
-
-    </div>
-
-    <div class="divider"></div>
-
-    <div class="panel-grid">
-
-      <div>
-
-        <h3>Manual Relationships</h3>
-
-        ${
-          manualNeighbors(gem.id).length
-            ? `
-              <div class="tags">
-
-                ${manualNeighbors(gem.id)
-                  .map(id => `
-                    <button
-                      class="tag"
-                      data-action="view-gem"
-                      data-id="${escapeAttr(id)}">
-                      ${escapeHTML(getGemName(id))}
-                    </button>
-                  `).join("")}
-
-              </div>
-            `
-            : `<p class="muted">No manual links recorded.</p>`
-        }
-
-        <p class="chart-note">
-          Manual links can be added through the
-          Mineral Family section of the profile editor.
-        </p>
-
-      </div>
-
-      <div>
-
-        <h3>Indirect Relationship Path</h3>
-
-        <div class="field">
-          <label>Find a path to</label>
-
-          <select
-            class="select"
-            id="path-target">
-
-            ${makeOptions(
-              sortGems(state.gems)
-                .filter(item => item.id !== gem.id)
-                .map(item => ({
-                  value:item.id,
-                  label:item.name
-                })),
-              "",
-              "Choose another gemstone"
-            )}
-
-          </select>
-
-        </div>
-
-        <div id="relationship-path" style="margin-top:13px;"></div>
-
-        <p class="chart-note">
-          This finds the shortest path through manually
-          entered relationships. Similarity alone does not
-          create a manual connection.
-        </p>
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-function updateRelationshipPath() {
-
-  const target = $("#path-target")?.value;
-  const container = $("#relationship-path");
-
-  if (!container) return;
-
-  if (!target) {
-    container.innerHTML = "";
-    return;
-  }
-
-  const path = shortestManualPath(
-    state.relationId,
-    target
-  );
-
-  if (!path) {
-
-    container.innerHTML = `
-      <p class="muted">
-        No manual connection path found.
-      </p>
-    `;
-
-    return;
-
-  }
-
-  container.innerHTML = `
-
-    <div class="path-list">
-
-      ${path.map((id,index) => `
-
-        ${index ? `<span class="path-arrow">→</span>` : ""}
-
-        ${tagHTML(getGemName(id),true)}
-
-      `).join("")}
-
-    </div>
-
-    <p class="chart-note">
-      ${path.length-1} connection(s).
-    </p>
-
-  `;
-
-}
-
-
-/* =========================================
-   STATISTICS ENGINE
-========================================= */
-
-function statisticsPopulation() {
-
-  const search = canonical(state.statSearch);
-
-  return state.gems.filter(gem => {
-
-    if (
-      state.statRarity &&
-      gem.rarity !== state.statRarity
-    ) {
-      return false;
-    }
-
-    if (!search) return true;
-
-    const searchable = CFG.fields
-      .filter(field => field.type !== "links")
-      .map(field => {
-
-        const value = gem[field.key];
-
-        return Array.isArray(value)
-          ? value.join(" ")
-          : String(value ?? "");
-
-      })
-      .join(" ");
-
-    return canonical(searchable).includes(search);
-
-  });
-
-}
-
-function dimensionValues(gem,key) {
-
-  const value = gem[key];
-
-  if (!hasValue(value)) return [];
-
-  const values =
-    Array.isArray(value)
-      ? value
-      : [value];
-
-  const seen = new Set();
-  const result = [];
-
-  for (const raw of values) {
-
-    const label = compact(raw);
-    const normalized = canonical(label);
-
-    if (!normalized || seen.has(normalized)) continue;
-
-    seen.add(normalized);
-    result.push(label);
-
-  }
-
-  return result;
-
-}
-
-function buildDistribution(gems,key) {
-
-  const counts = new Map();
-
-  for (const gem of gems) {
-
-    for (const value of dimensionValues(gem,key)) {
-
-      const normalized = canonical(value);
-
-      if (!counts.has(normalized)) {
-
-        counts.set(normalized,{
-          label:value,
-          value:0,
-          gemIds:new Set()
-        });
-
-      }
-
-      const entry = counts.get(normalized);
-
-      entry.value++;
-      entry.gemIds.add(gem.id);
-
-    }
-
-  }
-
-  return [...counts.values()]
-    .map(item => ({
-      label:item.label,
-      value:item.value,
-      gemIds:[...item.gemIds]
-    }))
-    .sort((a,b) =>
-      b.value-a.value ||
-      alphabetically(a.label,b.label)
-    );
-
-}
-
-
-function numericValues(gem,key) {
-
-  const raw = gem[key];
-
-  const values =
-    Array.isArray(raw)
-      ? raw
-      : [raw];
-
-  return values
-    .filter(item =>
-      item !== null &&
-      item !== undefined &&
-      String(item).trim() !== ""
-    )
-    .map(Number)
-    .filter(Number.isFinite);
-}
-   
-
-function buildNumericDistribution(gems,key) {
-
-  const allNumbers = gems.flatMap(
-    gem => numericValues(gem,key)
-  );
-
-  if (!allNumbers.length) return [];
-
-  const definition = CFG.numericDimensions.find(
-    item => item.key === key
-  );
-
-  let bounds = definition?.bins;
-
-  if (!bounds) {
-
-    const minimum = Math.min(...allNumbers);
-    const maximum = Math.max(...allNumbers);
-
-    if (minimum === maximum) {
-
-      const members = gems.filter(gem =>
-        numericValues(gem,key).includes(minimum)
-      );
-
-      return [{
-        label:formatNumber(minimum,4),
-        value:members.length,
-        gemIds:members.map(gem => gem.id)
-      }];
-
-    }
-
-    const steps = 6;
-    const width = (maximum-minimum)/steps;
-
-    bounds = Array.from(
-      {length:steps+1},
-      (_,index) => minimum+width*index
-    );
-
-  }
-
-  return bounds.slice(0,-1).map((lower,index) => {
-
-    const upper = bounds[index+1];
-
-    const isLast =
-      index === bounds.length-2;
-
-    const members = gems.filter(gem => {
-
-      return numericValues(gem,key).some(number =>
-
-        number >= lower &&
-        (
-          number < upper ||
-          (isLast && number <= upper)
-        )
-
-      );
-
-    });
-
-    return {
-      label:
-        `${formatNumber(lower,4)}–${formatNumber(upper,4)}`,
-
-      value:members.length,
-
-      gemIds:members.map(gem => gem.id)
-    };
-
-  });
-
-}
-
-function numericSummary(gems,key) {
-
-  const values = gems
-    .flatMap(gem => numericValues(gem,key))
-    .sort((a,b) => a-b);
-
-  if (!values.length) return null;
-
-  const sum = values.reduce(
-    (total,value) => total+value,
-    0
-  );
-
-  const midpoint = Math.floor(
-    values.length/2
-  );
-
-  const median =
-    values.length % 2
-      ? values[midpoint]
-      : (
-          values[midpoint-1] +
-          values[midpoint]
-        )/2;
-
-  return {
-    count:values.length,
-    average:sum/values.length,
-    median,
-    min:values[0],
-    max:values[values.length-1]
-  };
-}
-
-function buildCrossAnalysis(gems,keyA,keyB) {
-
-  const rows = buildDistribution(gems,keyA).slice(0,12);
-  const columns = buildDistribution(gems,keyB).slice(0,12);
-
-  const cells = rows.map(row => {
-
-    return columns.map(column => {
-
-      const members = gems.filter(gem => {
-
-        const a = dimensionValues(gem,keyA)
-          .some(value =>
-            canonical(value) === canonical(row.label)
-          );
-
-        const b = dimensionValues(gem,keyB)
-          .some(value =>
-            canonical(value) === canonical(column.label)
-          );
-
-        return a && b;
-
-      });
-
-      return {
-        count:members.length,
-        ids:members.map(gem => gem.id)
-      };
-
-    });
-
-  });
-
-  return {rows,columns,cells};
-
-}
-
-
-/* =========================================
-   STATISTICS PAGE
-========================================= */
-
-function renderStatistics() {
-
-  const population = statisticsPopulation();
-
-  const numeric = CFG.numericDimensions.some(
-    item => item.key === state.statDimension
-  );
-
-  const allDimensions = [
-    ...CFG.statisticsDimensions,
-    ...CFG.numericDimensions
-  ];
-
-  const distribution = numeric
-    ? buildNumericDistribution(
-        population,
-        state.statDimension
-      )
-    : buildDistribution(
-        population,
-        state.statDimension
-      );
-
-  const totalEntries = distribution.reduce(
-    (sum,item) => sum+item.value,
-    0
-  );
-
-  const uniqueCountries = buildDistribution(
-    population,
-    "countries"
-  ).length;
-
-  const uniqueSpecies = buildDistribution(
-    population,
-    "mineralSpecies"
-  ).length;
-
-  const documented = population.filter(gem =>
-    CFG.comparableFields.some(field =>
-      hasValue(gem[field.key])
-    )
-  ).length;
-
-  return `
-
-    <div class="page-heading">
-
-      <div>
-        <div class="eyebrow">LIBRARY ANALYTICS</div>
-        <h1>Statistics</h1>
-
-        <p>
-          Explore your complete gemstone collection
-          through interactive distributions and comparisons.
-        </p>
-      </div>
-
-    </div>
-
-    <div class="panel" style="margin-bottom:18px;">
-
-      <div class="panel-title">
-        <h2>Data Filters</h2>
-      </div>
-
-      <div class="control-row">
-
-        <div class="field search-field">
-
-          <label>Search Within Statistics</label>
-
-          <input
-            id="stat-search"
-            class="input"
-            type="search"
-            placeholder="Filter by name, property, country..."
-            value="${escapeAttr(state.statSearch)}">
-
-        </div>
-
-        <div class="field">
-
-          <label>Rarity</label>
-
-          <select
-            id="stat-rarity"
-            class="select">
-
-            ${makeOptions(
-              CFG.rarities,
-              state.statRarity,
-              "All rarities"
-            )}
-
-          </select>
-
-        </div>
-
-      </div>
-
-      <p class="chart-note">
-        All charts and calculations below use the
-        currently filtered collection.
-      </p>
-
-    </div>
-
-    <div class="stat-overview">
-
-      ${statTile(
-        "Gemstones",
-        population.length,
-        `${state.gems.length} in complete library`
-      )}
-
-      ${statTile(
-        "Mineral Species",
-        uniqueSpecies,
-        "Unique documented species"
-      )}
-
-      ${statTile(
-        "Countries",
-        uniqueCountries,
-        "Unique documented countries"
-      )}
-
-      ${statTile(
-        "Documented Gems",
-        documented,
-        "With comparison data"
-      )}
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-        <h2>Category Analysis</h2>
-        <span class="panel-subtitle">
-          ${population.length} gemstones
-        </span>
-      </div>
-
-      <div class="control-row">
-
-        <div class="field">
-
-          <label>Property</label>
-
-          <select
-            id="stat-dimension"
-            class="select">
-
-            ${makeOptions(
-              allDimensions.map(item => ({
-                value:item.key,
-                label:item.label
-              })),
-              state.statDimension
-            )}
-
-          </select>
-
-        </div>
-
-        <div class="field">
-
-          <label>Chart Type</label>
-
-          <select
-            id="stat-chart"
-            class="select">
-
-            ${makeOptions([
-              {value:"bar",label:"Ranked Bar Chart"},
-              {value:"donut",label:"Donut Chart"},
-              {value:"treemap",label:"Treemap"},
-              {value:"table",label:"Data Table"}
-            ],state.statChart)}
-
-          </select>
-
-        </div>
-
-      </div>
-
-      <div class="control-row">
-
-        <div class="field">
-
-          <label>Measurement</label>
-
-          <select
-            id="stat-metric"
-            class="select">
-
-            ${makeOptions([
-              {value:"records",label:"Number of Gemstones"},
-              {value:"percent",label:"Percentage of Gemstones"}
-            ],state.statMetric)}
-
-          </select>
-
-        </div>
-
-      </div>
-
-      <div class="chart-container">
-
-        ${renderChart(distribution,population.length)}
-
-      </div>
-
-      <p class="chart-note">
-
-        ${distribution.length} categories ·
-        ${totalEntries} recorded category occurrences.
-
-        Gemstones may appear in multiple categories when
-        a property accepts multiple values.
-
-      </p>
-
-      ${numeric
-        ? renderNumericSummary(
-            numericSummary(
-              population,
-              state.statDimension
-            )
-          )
-        : ""
-      }
-
-      ${renderStatDetail(population)}
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-
-        <h2>Cross-Analysis</h2>
-
-        <span class="panel-subtitle">
-          Compare two categories
-        </span>
-
-      </div>
-
-      <p class="section-description">
-        Discover which characteristics occur together.
-        For example, compare mineral species with rarity,
-        colors with countries, or crystal systems
-        with classifications.
-      </p>
-
-      <div class="control-row">
-
-        <div class="field">
-          <label>Rows</label>
-
-          <select
-            id="cross-a"
-            class="select">
-
-            ${makeOptions(
-              CFG.statisticsDimensions.map(item => ({
-                value:item.key,
-                label:item.label
-              })),
-              CFG.statisticsDimensions.some(item =>
-                item.key === state.statDimension
-              )
-                ? state.statDimension
-                : "mineralSpecies"
-            )}
-
-          </select>
-
-        </div>
-
-        <div class="field">
-          <label>Columns</label>
-
-          <select
-            id="cross-b"
-            class="select">
-
-            ${makeOptions(
-              CFG.statisticsDimensions.map(item => ({
-                value:item.key,
-                label:item.label
-              })),
-              state.statSecondary
-            )}
-
-          </select>
-        </div>
-
-      </div>
-
-      <div id="cross-analysis">
-
-        ${renderCrossAnalysis(population)}
-
-      </div>
-
-      <p class="chart-note">
-        Displays up to twelve categories on each axis,
-        ranked by frequency. Tap a number to see its gemstones.
-      </p>
-
-      <div id="cross-detail"></div>
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-        <h2>Numerical Properties</h2>
-      </div>
-
-      <p class="section-description">
-        Average, median, minimum and maximum values
-        across recorded gemstones.
-      </p>
-
-      ${renderNumericOverview(population)}
-
-    </div>
-
-    <div class="panel">
-
-      <div class="panel-title">
-        <h2>Most Common Characteristics</h2>
-      </div>
-
-      ${renderTopCharacteristics(population)}
-
-    </div>
-
-  `;
-
-}
-
-function statTile(label,value,detail) {
-
-  return `
-
-    <div class="stat-tile">
-
-      <div class="stat-tile-label">
-        ${escapeHTML(label)}
-      </div>
-
-      <div class="stat-tile-value">
-        ${formatNumber(value,1)}
-      </div>
-
-      <div class="stat-tile-detail">
-        ${escapeHTML(detail)}
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-function renderChart(data,populationCount) {
-
-  if (!data.length) {
-
-    return panelEmpty(
-      "No values recorded for this property."
-    );
-
-  }
-
-  const total = data.reduce(
-    (sum,item) => sum+item.value,
-    0
-  );
-
-  if (state.statChart === "donut") {
-    return renderDonutChart(data,total);
-  }
-
-  if (state.statChart === "treemap") {
-    return renderTreemap(data,total);
-  }
-
-  if (state.statChart === "table") {
-    return renderChartTable(data,populationCount);
-  }
-
-  return renderBarChart(data,populationCount);
-
 }
 
-function metricDisplay(count,populationCount) {
-
-  if (state.statMetric === "percent") {
-
-    return populationCount
-      ? round(count/populationCount*100,1)+"%"
-      : "0%";
-
-  }
-
-  return formatNumber(count);
-
-}
-
-function renderBarChart(data,populationCount) {
-
-  const maximum = Math.max(
-    ...data.map(item => item.value),
-    1
-  );
-
-  return `
-
-    <div class="bar-chart">
-
-      ${data.map((item,index) => `
-
-        <button
-          class="bar-row"
-          data-action="stat-detail"
-          data-index="${index}"
-          title="Show matching gemstones">
-
-          <span class="bar-label">
-            ${escapeHTML(item.label)}
-          </span>
-
-          <span class="bar-track">
-
-            <span
-              class="bar-fill"
-              style="width:${
-                item.value/maximum*100
-              }%">
-            </span>
-
-          </span>
-
-          <span class="bar-value">
-            ${metricDisplay(
-              item.value,
-              populationCount
-            )}
-          </span>
-
-        </button>
-
-      `).join("")}
-
-    </div>
-
-  `;
-
-}
-
-function renderDonutChart(data,total) {
-
-  if (!total) {
-    return panelEmpty("No chart data.");
-  }
-
-  let position = 0;
-
-  const segments = data.map((item,index) => {
-
-    const start = position;
-    const end = position + item.value/total*100;
-
-    position = end;
-
-    return `
-      ${CFG.chartColors[index%CFG.chartColors.length]}
-      ${start}%
-      ${end}%
-    `;
-
-  }).join(",");
-
-  return `
-
-    <div class="donut-layout">
-
-      <div
-        class="donut-chart"
-        style="background:conic-gradient(${segments});">
-
-        <div class="donut-hole">
-
-          <strong>${total}</strong>
-
-          <small>Occurrences</small>
-
-        </div>
-
-      </div>
-
-      <div class="donut-legend">
-
-        ${data.map((item,index) => `
-
-          <div class="legend-row">
-
-            <span
-              class="legend-dot"
-              style="background:${
-                CFG.chartColors[
-                  index%CFG.chartColors.length
-                ]
-              }">
-            </span>
-
-            <span class="legend-label">
-              ${escapeHTML(item.label)}
-            </span>
-
-            <span class="legend-value">
-              ${item.value}
-              (${round(item.value/total*100,1)}%)
-            </span>
-
-          </div>
-
-        `).join("")}
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-function renderTreemap(data,total) {
-
-  if (!total) {
-    return panelEmpty("No chart data.");
-  }
-
-  return `
-
-    <div class="treemap">
-
-      ${data.map((item,index) => `
-
-        <button
-          class="treemap-item"
-          data-action="stat-detail"
-          data-index="${index}"
-          style="
-            flex-grow:${item.value};
-            flex-basis:${
-              Math.max(
-                90,
-                item.value/total*450
-              )
-            }px;
-            background:${
-              CFG.chartColors[
-                index%CFG.chartColors.length
-              ]
-            };
-          ">
-
-          <span>${escapeHTML(item.label)}</span>
-
-          <strong>${item.value}</strong>
-
-        </button>
-
-      `).join("")}
-
-    </div>
-
-    <p class="chart-note">
-      Tile areas approximate category frequency.
-      Use the bar chart for more precise visual comparison.
-    </p>
-
-  `;
-
-}
-
-function renderChartTable(data,populationCount) {
-
-  return `
-
-    <div class="table-scroll">
-
-      <table class="data-table">
-
-        <thead>
-
-          <tr>
-            <th>Category</th>
-            <th>Count</th>
-            <th>% of Gems</th>
-            <th>Inspect</th>
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          ${data.map((item,index) => `
-
-            <tr>
-
-              <td>${escapeHTML(item.label)}</td>
-
-              <td>${item.value}</td>
-
-              <td>
-                ${
-                  populationCount
-                    ? round(
-                        item.value/populationCount*100,
-                        1
-                      )
-                    : 0
-                }%
-              </td>
-
-              <td>
-
-                <button
-                  class="link-button"
-                  data-action="stat-detail"
-                  data-index="${index}">
-                  View
-                </button>
-
-              </td>
-
-            </tr>
-
-          `).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  `;
-
-}
-
-function renderNumericSummary(summary) {
-
-  if (!summary) return "";
-
-  return `
-
-    <div class="divider"></div>
-
-    <div class="stat-overview">
-
-      ${statTile(
-        "Average",
-        round(summary.average,4),
-        "Arithmetic mean"
-      )}
-
-      ${statTile(
-        "Median",
-        round(summary.median,4),
-        "Middle value"
-      )}
-
-      ${statTile(
-        "Minimum",
-        summary.min,
-        "Lowest value"
-      )}
-
-      ${statTile(
-        "Maximum",
-        summary.max,
-        "Highest value"
-      )}
-
-    </div>
-
-    <p class="chart-note">
-      ${summary.count} valid recorded values.
-    </p>
-
-  `;
-
-}
-
-function renderStatDetail(population) {
-
-  if (!state.statDetail) {
-    return `<div id="stat-detail"></div>`;
-  }
-
-  if (
-    state.statDetail.dimension !==
-    state.statDimension
-  ) {
-
-    return `<div id="stat-detail"></div>`;
-
-  }
-
-  const data = getCurrentDistribution(population);
-
-  const item = data[state.statDetail.index];
-
-  if (!item) {
-    return `<div id="stat-detail"></div>`;
-  }
-
-  return `
-
-    <div class="stat-detail" id="stat-detail">
-
-      <strong>
-        ${escapeHTML(item.label)}
-      </strong>
-
-      <p class="muted" style="font-size:11px;margin:5px 0;">
-        ${item.gemIds.length} matching gemstones
-      </p>
-
-      <div class="stat-detail-list">
-
-        ${item.gemIds.map(id => `
-
-          <button
-            class="tag"
-            data-action="view-gem"
-            data-id="${escapeAttr(id)}">
-
-            ${escapeHTML(getGemName(id))}
-
-          </button>
-
-        `).join("")}
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-function getCurrentDistribution(population) {
-
-  const numeric = CFG.numericDimensions.some(
-    item => item.key === state.statDimension
-  );
-
-  return numeric
-    ? buildNumericDistribution(
-        population,
-        state.statDimension
-      )
-    : buildDistribution(
-        population,
-        state.statDimension
-      );
-
-}
-
-function renderCrossAnalysis(population) {
-
-  const keyA =
-    $("#cross-a")?.value ||
-    (
-      CFG.statisticsDimensions.some(item =>
-        item.key === state.statDimension
-      )
-        ? state.statDimension
-        : "mineralSpecies"
-    );
-
-  const keyB =
-    $("#cross-b")?.value ||
-    state.statSecondary;
-
-  const matrix = buildCrossAnalysis(
-    population,
-    keyA,
-    keyB
-  );
-
-  if (
-    !matrix.rows.length ||
-    !matrix.columns.length
-  ) {
-
-    return panelEmpty(
-      "Not enough categorized information for cross-analysis."
-    );
-
+function clearDraft() {
+  clearTimeout(draftTimer);
+  try {
+    localStorage.removeItem(CFG.draftKey);
+  } catch(error) {
+    console.error(error);
   }
-
-  const max = Math.max(
-    1,
-    ...matrix.cells.flat().map(cell => cell.count)
-  );
-
-  return `
-
-    <div class="table-scroll">
-
-      <table class="data-table cross-table">
-
-        <thead>
-
-          <tr>
-
-            <th>${escapeHTML(fieldLabel(keyA))}</th>
-
-            ${matrix.columns.map(column => `
-
-              <th>${escapeHTML(column.label)}</th>
-
-            `).join("")}
-
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          ${matrix.rows.map((row,i) => `
-
-            <tr>
-
-              <th>${escapeHTML(row.label)}</th>
-
-              ${matrix.cells[i].map((cell,j) => {
-
-                const intensity =
-                  cell.count/max;
-
-                const opacity =
-                  round(.06+intensity*.45,3);
-
-                return `
-
-                  <td
-                    class="cross-cell"
-                    style="
-                      background:rgba(
-                        83,100,81,${opacity}
-                      );
-                    ">
-
-                    <button
-                      data-action="cross-detail"
-                      data-row="${i}"
-                      data-column="${j}">
-                      ${cell.count || "·"}
-                    </button>
-
-                  </td>
-
-                `;
-
-              }).join("")}
-
-            </tr>
-
-          `).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  `;
-
-}
-
-function showCrossDetail(rowIndex,columnIndex) {
-
-  const population = statisticsPopulation();
-
-  const keyA = $("#cross-a")?.value;
-  const keyB = $("#cross-b")?.value;
-
-  if (!keyA || !keyB) return;
-
-  const matrix = buildCrossAnalysis(
-    population,keyA,keyB
-  );
-
-  const row = matrix.rows[rowIndex];
-  const column = matrix.columns[columnIndex];
-
-  const cell =
-    matrix.cells[rowIndex]?.[columnIndex];
-
-  if (!row || !column || !cell) return;
-
-  $("#cross-detail").innerHTML = `
-
-    <div class="stat-detail">
-
-      <strong>
-        ${escapeHTML(row.label)}
-        +
-        ${escapeHTML(column.label)}
-      </strong>
-
-      <p class="muted" style="font-size:11px;">
-        ${cell.count} matching gemstones
-      </p>
-
-      <div class="stat-detail-list">
-
-        ${cell.ids.map(id => `
-
-          <button
-            class="tag"
-            data-action="view-gem"
-            data-id="${escapeAttr(id)}">
-
-            ${escapeHTML(getGemName(id))}
-
-          </button>
-
-        `).join("")}
-
-      </div>
-
-    </div>
-
-  `;
-
-}
-
-function renderNumericOverview(population) {
-
-  return `
-
-    <div class="table-scroll">
-
-      <table class="data-table">
-
-        <thead>
-
-          <tr>
-            <th>Property</th>
-            <th>Recorded</th>
-            <th>Average</th>
-            <th>Median</th>
-            <th>Minimum</th>
-            <th>Maximum</th>
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          ${CFG.numericDimensions.map(field => {
-
-            const stats = numericSummary(
-              population,
-              field.key
-            );
-
-            return `
-
-              <tr>
-
-                <td>
-                  <strong>
-                    ${escapeHTML(field.label)}
-                  </strong>
-                </td>
-
-                <td>${stats?.count ?? 0}</td>
-
-                <td>${
-                  stats
-                    ? formatNumber(stats.average,4)
-                    : "—"
-                }</td>
-
-                <td>${
-                  stats
-                    ? formatNumber(stats.median,4)
-                    : "—"
-                }</td>
-
-                <td>${
-                  stats
-                    ? formatNumber(stats.min,4)
-                    : "—"
-                }</td>
-
-                <td>${
-                  stats
-                    ? formatNumber(stats.max,4)
-                    : "—"
-                }</td>
-
-              </tr>
-
-            `;
-
-          }).join("")}
-
-        </tbody>
-
-      </table>
-
-    </div>
-
-  `;
-
-}
-
-function renderTopCharacteristics(population) {
-
-  const keys = [
-    "classifications",
-    "mineralSpecies",
-    "colors",
-    "countries",
-    "crystalSystem",
-    "meaning"
-  ];
-
-  return `
-
-    <div class="panel-grid">
-
-      ${keys.map(key => {
-
-        const data = buildDistribution(
-          population,key
-        ).slice(0,5);
-
-        return `
-
-          <div>
-
-            <h3>${escapeHTML(fieldLabel(key))}</h3>
-
-            ${
-              data.length
-                ? `
-                  <div class="bar-chart">
-
-                    ${data.map(item => `
-
-                      <div class="bar-row" style="cursor:default;">
-
-                        <span class="bar-label">
-                          ${escapeHTML(item.label)}
-                        </span>
-
-                        <span class="bar-track">
-
-                          <span
-                            class="bar-fill"
-                            style="width:${
-                              item.value /
-                              Math.max(...data.map(x => x.value)) *
-                              100
-                            }%">
-                          </span>
-
-                        </span>
-
-                        <span class="bar-value">
-                          ${item.value}
-                        </span>
-
-                      </div>
-
-                    `).join("")}
-
-                  </div>
-                `
-                : `
-                  <p class="muted" style="font-size:11px;">
-                    No recorded information
-                  </p>
-                `
-            }
-
-          </div>
-
-        `;
-
-      }).join("")}
-
-    </div>
-
-  `;
-
 }
-
-
-/* =========================================
-   IMPORT / EXPORT
-========================================= */
 
 function exportLibrary() {
-
-  const payload = {
-    format: "gem-library-v2",
-    version: 2,
-    exportedAt: new Date().toISOString(),
-    gemstones: state.gems
+  const backup = {
+    format:"gem-library-v3",
+    version:3,
+    exportedAt:new Date().toISOString(),
+    gemstones:state.gems
   };
 
-  const json = JSON.stringify(
-    payload,
-    null,
-    2
-  );
-
   const blob = new Blob(
-    [json],
+    [JSON.stringify(backup,null,2)],
     {type:"application/json"}
   );
 
   const url = URL.createObjectURL(blob);
-
   const link = document.createElement("a");
 
   link.href = url;
-
-  link.download =
-    "gem-library-backup-" +
-    new Date().toISOString().slice(0,10) +
-    ".json";
+  link.download = "gem-library-v3-" +
+    new Date().toISOString().slice(0,10) + ".json";
 
   document.body.appendChild(link);
-
   link.click();
   link.remove();
 
-  setTimeout(() => {
-    URL.revokeObjectURL(url);
-  },1000);
-
-  toast("Backup exported.");
-
+  setTimeout(()=>URL.revokeObjectURL(url),1500);
+  toast("Library backup exported.");
 }
 
 async function importLibrary(file) {
-
   if (!file) return;
 
   try {
-
-    const text = await file.text();
-    const parsed = JSON.parse(text);
-
-    const records = Array.isArray(parsed)
-      ? parsed
-      : parsed?.gemstones;
+    const parsed = JSON.parse(await file.text());
+    const records = Array.isArray(parsed) ?
+      parsed : parsed?.gemstones;
 
     if (!Array.isArray(records)) {
-      throw new Error("Not a gemstone library file.");
+      throw Error("Not a gemstone library.");
     }
 
-    // Validate before changing the existing collection.
-
-    const incoming = records.map(record => {
-
-      if (
-        !record ||
-        typeof record !== "object" ||
-        Array.isArray(record) ||
-        typeof record.name !== "string" ||
-        !record.name.trim()
-      ) {
-
-        throw new Error(
-          "One or more gemstone records are invalid."
-        );
-
+    for (const item of records) {
+      if (!item || typeof item.name !== "string" ||
+          !item.name.trim()) {
+        throw Error("Invalid gemstone record.");
       }
+    }
 
-      return normalizeGem(record);
-
-    });
+    const incoming = records.map(normalizeGem);
 
     confirmAction(
       "Import Gemstones",
-      `Import ${incoming.length} gemstones? Existing gemstones will be preserved; matching IDs will be updated.`,
-      () => {
-
-        const previous = [...state.gems];
-
+      `Merge ${incoming.length} records into your current library?`,
+      ()=>{
+        const previous = state.gems;
         const collection = new Map(
-          state.gems.map(gem => [gem.id,gem])
+          state.gems.map(gem=>[gem.id,gem])
         );
 
-        const usedIds = new Set(collection.keys());
+        const reserved = new Set(collection.keys());
 
         for (const gem of incoming) {
-
           if (!gem.id) {
-            gem.id = uniqueId();
+            do {
+              gem.id = uid();
+            } while (reserved.has(gem.id));
           }
-
-          usedIds.add(gem.id);
-
+          reserved.add(gem.id);
           collection.set(gem.id,gem);
-
         }
 
-        const imported = [...collection.values()];
-
-        // Avoid accidental duplicate names after merging.
+        state.gems = [...collection.values()];
 
         const names = new Set();
 
-        for (const gem of imported) {
-
-          const base = compact(gem.name);
-
+        state.gems.forEach(gem=>{
+          const base = gem.name.trim();
           let candidate = base;
-          let index = 2;
+          let counter = 2;
 
           while (names.has(canonical(candidate))) {
-
-            candidate =
-              `${base} (${index})`;
-
-            index++;
-
+            candidate = `${base} (${counter++})`;
           }
 
           gem.name = candidate;
-
           names.add(canonical(candidate));
+        });
 
-        }
-
-        state.gems = imported;
-
-        if (!persistLibrary()) {
+        if (!persist()) {
           state.gems = previous;
           return;
         }
 
-        refreshSelections();
-
         navigate("library");
-
-        toast(
-          `${incoming.length} gemstone records imported.`
-        );
-
+        toast("Import completed.");
       }
     );
 
+  } catch(error) {
+    toast("Import failed: "+error.message);
   }
+}
 
-  catch (error) {
+function confirmAction(title,message,callback) {
+  state.pendingConfirmation = callback;
+  $("#confirm-title").textContent = title;
+  $("#confirm-message").textContent = message;
+  $("#confirm-overlay").classList.remove("hidden");
+}
 
-    console.error(error);
+function closeConfirmation() {
+  $("#confirm-overlay").classList.add("hidden");
+  state.pendingConfirmation = null;
+}
 
-    toast(
-      "Import failed: " +
-      (error.message || "Invalid file.")
-    );
-
-  }
-
+function acceptConfirmation() {
+  const callback = state.pendingConfirmation;
+  closeConfirmation();
+  if (typeof callback === "function") callback();
 }
 
 function clearLibrary() {
-
   confirmAction(
-    "Clear Entire Library",
-    "This permanently removes every gemstone from this browser. Export a backup first.",
-    () => {
-
-      const previous = [...state.gems];
-
+    "Clear Library",
+    "Permanently erase every gemstone in this browser? Export a backup first.",
+    ()=>{
+      const old = state.gems;
       state.gems = [];
 
-      if (!persistLibrary()) {
-        state.gems = previous;
+      if (!persist()) {
+        state.gems = old;
         return;
       }
 
@@ -5130,67 +457,2388 @@ function clearLibrary() {
       state.compareB = "";
       state.multiIds = [];
       state.relationId = "";
-
       navigate("library");
-
       toast("Library cleared.");
-
     }
   );
-
 }
 
+/* ==========================================
+   GEMSTONE OPERATIONS
+========================================== */
 
-/* =========================================
-   CONFIRMATION WINDOW
-========================================= */
+function saveGem(input) {
+  const gem = normalizeGem(input);
+  gem.name = compact(gem.name);
 
-function confirmAction(title,message,callback) {
-
-  state.pendingConfirmation = callback;
-
-  $("#confirm-title").textContent = title;
-
-  $("#confirm-message").textContent = message;
-
-  $("#confirm-overlay").classList.remove("hidden");
-
-}
-
-function closeConfirmation() {
-
-  $("#confirm-overlay").classList.add("hidden");
-
-  state.pendingConfirmation = null;
-
-}
-
-function acceptConfirmation() {
-
-  const action = state.pendingConfirmation;
-
-  closeConfirmation();
-
-  if (typeof action === "function") {
-    action();
+  if (!gem.name) {
+    toast("Please enter a gemstone name.");
+    return false;
   }
 
+  if (state.gems.some(item=>
+    item.id !== gem.id &&
+    canonical(item.name) === canonical(gem.name)
+  )) {
+    toast("This gemstone name already exists.");
+    return false;
+  }
+
+  const now = new Date().toISOString();
+  const old = getGem(gem.id);
+
+  if (!gem.id) gem.id = uid();
+
+  gem.createdAt = old?.createdAt ||
+    gem.createdAt || now;
+  gem.updatedAt = now;
+
+  gem.relatesTo = distinct(gem.relatesTo)
+    .filter(id=>id !== gem.id && !!getGem(id));
+
+  const previous = state.gems;
+
+  state.gems = old ?
+    state.gems.map(item=>
+      item.id === gem.id ? gem : item
+    ) :
+    [...state.gems,gem];
+
+  if (!persist()) {
+    state.gems = previous;
+    return false;
+  }
+
+  clearDraft();
+  state.selectedGem = gem.id;
+  toast("Gemstone saved.");
+  return true;
 }
 
+function deleteGem(id) {
+  const gem = getGem(id);
+  if (!gem) return;
 
-/* =========================================
-   CENTRAL BUTTON ACTIONS
-========================================= */
+  confirmAction(
+    "Delete Gemstone",
+    `Delete "${gem.name}" permanently?`,
+    ()=>{
+      const old = state.gems;
 
-function handleAction(element) {
+      state.gems = state.gems
+        .filter(item=>item.id !== id)
+        .map(item=>({
+          ...item,
+          relatesTo:valuesOf(item,"relatesTo")
+            .filter(link=>link !== id)
+        }));
 
-  const action = element.dataset.action;
-  const id = element.dataset.id;
+      if (!persist()) {
+        state.gems = old;
+        return;
+      }
 
-  switch (action) {
+      state.selectedGem = null;
+      navigate("library");
+      toast("Gemstone deleted.");
+    }
+  );
+}
 
+function duplicateGem(id) {
+  const original = getGem(id);
+  if (!original) return;
+
+  const gem = normalizeGem(original);
+  gem.id = "";
+  gem.createdAt = "";
+  gem.updatedAt = "";
+  gem.relatesTo = [...original.relatesTo];
+
+  let number = 1;
+
+  do {
+    gem.name = original.name +
+      (number === 1 ? " (Copy)" : ` (Copy ${number})`);
+    number++;
+  } while (state.gems.some(item=>
+    canonical(item.name) === canonical(gem.name)
+  ));
+
+  openEditor(null,gem);
+}
+
+/* ==========================================
+   EDITOR
+========================================== */
+
+function openEditor(id=null,initial=null) {
+  const source = initial || (id ?
+    getGem(id) : createEmptyGem());
+
+  if (!source) {
+    toast("Gemstone not found.");
+    return;
+  }
+
+  state.editingId = id;
+  state.draft = normalizeGem(source);
+  state.editorOpen = true;
+
+  $("#editor-heading").textContent =
+    id ? "Edit Gemstone" : "New Gemstone";
+
+  $("#editor-fields").innerHTML = CFG.sections
+    .map((section,index)=>`
+      <details class="editor-section"
+        ${index === 0 ? "open" : ""}>
+        <summary>${esc(section.title)}</summary>
+        <div class="editor-section-content">
+          <div class="form-grid">
+            ${section.fields.map(renderEditorField).join("")}
+          </div>
+        </div>
+      </details>
+    `).join("");
+
+  $("#editor-overlay").classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+
+  storeDraft();
+
+  if (!id) $('[name="name"]')?.focus();
+}
+
+function closeEditor() {
+  state.editorOpen = false;
+  state.editingId = null;
+  state.draft = null;
+  $("#editor-overlay").classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
+function requestCloseEditor() {
+  storeDraft();
+  closeEditor();
+  toast("Editor closed. Draft preserved.");
+}
+
+function fieldWrap(field,content) {
+  return `<div class="field ${field.wide ?
+    "form-wide":""}" data-field="${field.key}">
+    <label>${esc(field.label)}
+      ${field.required ? "*" : ""}
+    </label>
+    ${content}
+    ${field.hint ? `<div class="field-hint">
+      ${esc(field.hint)}</div>` : ""}
+  </div>`;
+}
+
+function renderEditorField(field) {
+  const key = field.key;
+  const value = state.draft[key];
+
+  if (field.type === "choice") {
+    const selected = valuesOf(state.draft,key);
+
+    return fieldWrap(field,`
+      <div class="check-options">
+        ${CFG[field.options].map(option=>`
+          <label class="check-option">
+            <input type="checkbox"
+              name="${key}"
+              value="${esc(option)}"
+              ${selected.some(v=>canonical(v)===
+                canonical(option))?"checked":""}>
+            ${esc(option)}
+          </label>
+        `).join("")}
+      </div>
+    `);
+  }
+
+  if (field.type === "select") {
+    return fieldWrap(field,`
+      <select class="select" name="${key}">
+        ${options(CFG[field.options],value,
+          "Not specified")}
+      </select>
+    `);
+  }
+
+  if (field.type === "tags") {
+    return fieldWrap(field,`
+      <div class="tag-editor" data-tags="${key}">
+        <div class="tags">
+          ${editorChips(key)}
+        </div>
+        <div class="tag-editor-input">
+          <input type="text" class="input"
+            data-add-input="${key}"
+            inputmode="text"
+            placeholder="Add an answer...">
+          <button type="button"
+            class="button button-secondary"
+            data-action="add-value"
+            data-field="${key}">Add</button>
+        </div>
+      </div>
+    `);
+  }
+
+  if (field.type === "links") {
+    return fieldWrap(field,`
+      <div class="tag-editor" data-tags="${key}">
+        <div class="tags">${editorChips(key)}</div>
+        <div class="tag-editor-input">
+          <select class="select"
+            data-link-select="${key}">
+            ${options(
+              sortGems(state.gems)
+                .filter(g=>g.id!==state.editingId)
+                .map(g=>({value:g.id,label:g.name})),
+              "",
+              "Choose a saved gemstone"
+            )}
+          </select>
+          <button type="button"
+            class="button button-secondary"
+            data-action="add-link"
+            data-field="${key}">Add</button>
+        </div>
+      </div>
+    `);
+  }
+
+  if (field.type === "text" ||
+      field.type === "number" ||
+      field.type === "textarea") {
+    return renderFlexibleField(field);
+  }
+
+  return "";
+}
+
+function renderFlexibleField(field) {
+  const key = field.key;
+  const value = state.draft[key];
+  const multiple = Array.isArray(value) &&
+    key !== "name";
+
+  let content = "";
+
+  if (multiple) {
+    content = `
+      <div class="flexible-values">
+        ${editorChips(key)}
+      </div>
+      <div class="flexible-entry">
+        <input class="input" type="text"
+          inputmode="text" autocomplete="off"
+          data-add-input="${key}"
+          placeholder="Add another answer...">
+        <button type="button"
+          class="button button-secondary button-small"
+          data-action="add-value"
+          data-field="${key}">Add</button>
+      </div>
+    `;
+  } else if (field.type === "textarea") {
+    content = `<textarea class="textarea"
+      name="${key}"
+      placeholder="Write here...">${esc(value ?? "")}</textarea>`;
+  } else {
+    content = `<input class="input" type="text"
+      inputmode="text" autocomplete="off"
+      name="${key}"
+      value="${esc(value ?? "")}"
+      ${field.required?"required":""}>`;
+  }
+
+  return `<div class="field flexible-field
+    ${field.wide?"form-wide":""}"
+    data-field="${key}">
+    <div class="flexible-heading">
+      <label>${esc(field.label)}
+        ${field.required?"*":""}</label>
+      ${key !== "name" ? `
+        <label class="flexible-toggle">
+          <input type="checkbox"
+            data-flex-toggle="${key}"
+            ${multiple?"checked":""}>
+          <span>Multiple</span>
+        </label>
+      `:""}
+    </div>
+    ${content}
+    ${field.hint ? `<div class="field-hint">
+      ${esc(field.hint)}</div>`:""}
+  </div>`;
+}
+
+function editorChips(key) {
+  return arrayOf(state.draft?.[key])
+    .map((value,index)=>{
+      const label = key === "relatesTo" ?
+        (getGem(value)?.name || "Unknown Gem") :
+        value;
+
+      return `<span class="flexible-chip">
+        <span>${esc(label)}</span>
+        <button type="button" class="tag-button"
+          data-action="remove-value"
+          data-field="${key}"
+          data-index="${index}">×</button>
+      </span>`;
+    }).join("");
+}
+
+function refreshField(key) {
+  const field = CFG.fieldMap[key];
+  const element = document.querySelector(
+    `[data-field="${key}"]`
+  );
+
+  if (!field || !element) return;
+
+  element.outerHTML = renderEditorField(field);
+  queueDraft();
+}
+
+function addValue(key) {
+  if (!state.draft) return false;
+
+  const field = CFG.fieldMap[key];
+  const input = document.querySelector(
+    `[data-add-input="${key}"]`
+  );
+
+  if (!field || !input) return false;
+
+  const raw = input.value.trim();
+  if (!raw) return true;
+
+  let value = raw;
+
+  if (field.type === "number") {
+    const number = Number(raw);
+
+    if (!Number.isFinite(number)) {
+      toast(`${field.label} needs a valid number.`);
+      input.focus();
+      return false;
+    }
+    value = number;
+  }
+
+  const current = arrayOf(state.draft[key]);
+
+  if (!current.some(v=>canonical(v)===
+    canonical(value))) {
+    state.draft[key] = [...current,value];
+  }
+
+  refreshField(key);
+  document.querySelector(
+    `[data-add-input="${key}"]`
+  )?.focus();
+
+  return true;
+}
+
+function addLink(key) {
+  if (!state.draft) return;
+
+  const input = document.querySelector(
+    `[data-link-select="${key}"]`
+  );
+
+  if (!input?.value) return;
+
+  if (input.value === state.editingId) return;
+  if (!getGem(input.value)) return;
+
+  const current = arrayOf(state.draft[key]);
+
+  if (!current.includes(input.value)) {
+    state.draft[key] = [...current,input.value];
+  }
+
+  refreshField(key);
+}
+
+function removeValue(key,index) {
+  if (!state.draft) return;
+
+  const current = [...arrayOf(state.draft[key])];
+  current.splice(index,1);
+
+  state.draft[key] = current;
+  refreshField(key);
+}
+
+function toggleMultiple(key,enabled) {
+  if (!state.draft || key === "name") return;
+
+  const field = CFG.fieldMap[key];
+  if (!field) return;
+
+  const current = state.draft[key];
+
+  if (enabled) {
+    state.draft[key] = arrayOf(current).filter(
+      item => item !== null && String(item).trim()
+    );
+  } else {
+    const values = arrayOf(current);
+    state.draft[key] = values[0] ??
+      (field.type==="number"?null:"");
+
+    if (values.length>1) {
+      toast("Single mode keeps the first answer.");
+    }
+  }
+
+  refreshField(key);
+}
+
+function updateDraftInput(input) {
+  if (!state.draft || !input.name) return;
+
+  const field = CFG.fieldMap[input.name];
+  if (!field) return;
+
+  if (field.type === "choice") {
+    state.draft[field.key] = [
+      ...$("#gem-form").querySelectorAll(
+        `input[name="${field.key}"]:checked`
+      )
+    ].map(item=>item.value);
+  } else {
+    state.draft[field.key] = input.value;
+  }
+
+  $("#editor-status").textContent =
+    "Unsaved changes";
+
+  queueDraft();
+}
+
+function validateDraft() {
+  const draft = state.draft;
+
+  if (!draft?.name?.trim()) {
+    $(".editor-section").open = true;
+    $('[name="name"]')?.focus();
+    toast("Gemstone name is required.");
+    return false;
+  }
+
+  for (const field of CFG.fields) {
+    if (field.type !== "number") continue;
+
+    const original = draft[field.key];
+    const multiple = Array.isArray(original);
+    const converted = [];
+
+    for (const item of arrayOf(original)) {
+      if (String(item).trim() === "") continue;
+
+      const number = Number(item);
+
+      if (!Number.isFinite(number)) {
+        toast(`Invalid number: ${field.label}`);
+        return false;
+      }
+
+      converted.push(number);
+    }
+
+    draft[field.key] = multiple ?
+      [...new Set(converted)] :
+      (converted[0] ?? null);
+  }
+
+  return true;
+}
+
+function submitEditor(event) {
+  event.preventDefault();
+  if (!state.draft) return;
+
+  // Flush every typed but uncommitted answer.
+  for (const input of [
+    ...document.querySelectorAll("[data-add-input]")
+  ]) {
+    if (!input.value.trim()) continue;
+    if (!addValue(input.dataset.addInput)) return;
+  }
+
+  if (!validateDraft()) return;
+  if (!saveGem(state.draft)) return;
+
+  closeEditor();
+  navigate("profile");
+}
+
+function recoverDraft() {
+  const saved = readDraft();
+
+  if (!saved) {
+    toast("No draft found.");
+    return;
+  }
+
+  openEditor(
+    saved.editingId && getGem(saved.editingId) ?
+      saved.editingId : null,
+    saved.gem
+  );
+}
+
+/* ==========================================
+   NAVIGATION
+========================================== */
+
+function refreshSelections() {
+  const ids = new Set(state.gems.map(g=>g.id));
+
+  if (!ids.has(state.compareA)) {
+    state.compareA = state.gems[0]?.id || "";
+  }
+
+  if (!ids.has(state.compareB) ||
+      state.compareB === state.compareA) {
+    state.compareB = state.gems.find(
+      g=>g.id !== state.compareA
+    )?.id || "";
+  }
+
+  if (!ids.has(state.relationId)) {
+    state.relationId = state.gems[0]?.id || "";
+  }
+
+  if (!ids.has(state.selectedGem)) {
+    state.selectedGem = null;
+  }
+
+  state.multiIds = state.multiIds.filter(
+    id=>ids.has(id)
+  );
+}
+
+function navigate(page) {
+  if (![
+    "library","profile","compare",
+    "relations","statistics"
+  ].includes(page)) return;
+
+  state.page = page;
+  render();
+  window.scrollTo(0,0);
+}
+
+function openProfile(id) {
+  if (!getGem(id)) return;
+  state.selectedGem = id;
+  navigate("profile");
+}
+
+function render() {
+  refreshSelections();
+
+  const labels = {
+    library:"Library",
+    profile:"Gemstone Profile",
+    compare:"Comparison",
+    relations:"Relationships",
+    statistics:"Statistics"
+  };
+
+  $("#current-page-label").textContent =
+    labels[state.page];
+
+  $("#sidebar-count").textContent =
+    state.gems.length;
+
+  $$("[data-page]").forEach(button=>{
+    button.classList.toggle("active",
+      button.dataset.page === (
+        state.page === "profile" ?
+          "library" : state.page
+      )
+    );
+  });
+
+  const pages = {
+    library:renderLibrary,
+    profile:renderProfile,
+    compare:renderComparison,
+    relations:renderRelationships,
+    statistics:renderStatistics
+  };
+
+  main.innerHTML = (pages[state.page] ||
+    pages.library)();
+
+  if (state.page === "library") {
+    renderLibraryResults();
+  }
+}
+
+/* ==========================================
+   LIBRARY PAGE
+========================================== */
+
+function filteredLibrary() {
+  const search = canonical(state.librarySearch);
+
+  let gems = state.gems.filter(gem=>{
+    if (state.libraryRarity &&
+        gem.rarity !== state.libraryRarity) {
+      return false;
+    }
+
+    if (!search) return true;
+
+    return CFG.fields.some(field=>
+      canonical(joinValue(gem[field.key]," "))
+        .includes(search)
+    );
+  });
+
+  if (state.librarySort === "recent") {
+    gems.sort((a,b)=>
+      String(b.updatedAt).localeCompare(
+        String(a.updatedAt)
+      )
+    );
+  } else if (state.librarySort === "rarity") {
+    gems.sort((a,b)=>
+      CFG.rarities.indexOf(b.rarity) -
+      CFG.rarities.indexOf(a.rarity)
+    );
+  } else {
+    gems = sortGems(gems);
+  }
+
+  return gems;
+}
+
+function renderLibrary() {
+  const draft = readDraft();
+
+  return `<div class="page-heading">
+    <div>
+      <div class="eyebrow">COLLECTION</div>
+      <h1>Gemstone Library</h1>
+      <p>${state.gems.length} saved profiles</p>
+    </div>
+    <div class="page-actions">
+      <button class="button button-secondary"
+        data-action="export">Export</button>
+      <button class="button button-secondary"
+        data-action="import">Import</button>
+    </div>
+  </div>
+
+  ${draft ? `<div class="panel"
+    style="margin-bottom:18px">
+    <div class="panel-title">
+      <h3>Unfinished Draft</h3>
+    </div>
+    <p class="section-description">
+      A gemstone draft was preserved locally.
+    </p>
+    <div class="page-actions">
+      <button class="button button-secondary"
+        data-action="recover-draft">
+        Resume Draft
+      </button>
+      <button class="button button-ghost"
+        data-action="discard-draft">
+        Discard
+      </button>
+    </div>
+  </div>` : ""}
+
+  <div class="library-toolbar">
+    <input id="library-search"
+      class="input" type="search"
+      placeholder="Search gemstones, minerals, origins..."
+      value="${esc(state.librarySearch)}">
+
+    <select id="library-rarity" class="select">
+      ${options(CFG.rarities,
+        state.libraryRarity,"All rarities")}
+    </select>
+
+    <select id="library-sort" class="select">
+      ${options([
+        {value:"name",label:"Name A–Z"},
+        {value:"recent",label:"Recently Updated"},
+        {value:"rarity",label:"Rarity"}
+      ],state.librarySort)}
+    </select>
+  </div>
+
+  <div class="result-count"
+    id="library-result-count"></div>
+  <div id="library-results"></div>`;
+}
+
+function renderLibraryResults() {
+  const container = $("#library-results");
+  if (!container) return;
+
+  const gems = filteredLibrary();
+
+  $("#library-result-count").textContent =
+    `${gems.length} of ${state.gems.length} gemstones`;
+
+  if (!gems.length) {
+    container.innerHTML = `<div class="empty-state">
+      <div class="empty-symbol">◇</div>
+      <h2>${state.gems.length ?
+        "No matching gemstones" :
+        "Your library is empty"}</h2>
+      <p>Start creating gemstone profiles.</p>
+      <button class="button button-primary"
+        data-action="new-gem">
+        + New Gemstone
+      </button>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = `<div class="library-grid">
+    ${gems.map(gem=>`
+      <article class="gem-card">
+        <div class="gem-card-top">
+          <div>
+            <h3>${esc(gem.name)}</h3>
+            <div class="gem-card-subtitle">
+              ${esc(joinValue(gem.title)||"Gemstone")}
+            </div>
+          </div>
+          <div class="gem-card-symbol">◇</div>
+        </div>
+
+        <div class="gem-card-details">
+          ${[
+            ["Rarity",gem.rarity],
+            ["Species",gem.mineralSpecies],
+            ["Mohs",gem.mohs]
+          ].map(([label,value])=>`
+            <div class="gem-card-detail">
+              <span>${label}</span>
+              <span>${esc(joinValue(value)||"—")}</span>
+            </div>`).join("")}
+        </div>
+
+        <div class="tags gem-card-tags">
+          ${tags(gem.classifications.slice(0,3))}
+        </div>
+
+        <div class="gem-card-actions">
+          <button class="button button-primary button-small"
+            data-action="view-gem"
+            data-id="${esc(gem.id)}">Open</button>
+
+          <button class="button button-secondary button-small"
+            data-action="edit-gem"
+            data-id="${esc(gem.id)}">Edit</button>
+
+          <button class="button button-ghost button-small"
+            data-action="compare-gem"
+            data-id="${esc(gem.id)}">Compare</button>
+        </div>
+      </article>
+    `).join("")}
+  </div>`;
+}
+
+/* ==========================================
+   COMPACT PROFILE
+========================================== */
+
+function formatFieldValue(gem,field) {
+  const value = gem[field.key];
+  if (!hasValue(value)) {
+    return `<span class="empty-note">
+      Not specified</span>`;
+  }
+
+  if (field.type === "links") {
+    return `<div class="tags">
+      ${arrayOf(value).map(id=>{
+        const linked = getGem(id);
+        return linked ? gemButton(linked) : "";
+      }).join("")}
+    </div>`;
+  }
+
+  if (Array.isArray(value)) {
+    return `<div class="tags">
+      ${tags(value)}
+    </div>`;
+  }
+
+  if (field.type === "number") {
+    return esc(formatNumber(value,4));
+  }
+
+  return esc(value);
+}
+
+function profileSection(gem,title,keys) {
+  const visible = keys.filter(key=>
+    CFG.fieldMap[key] && hasValue(gem[key])
+  );
+
+  if (!visible.length) return "";
+
+  return `<section class="sheet-section">
+    <div class="sheet-section-heading">
+      ${esc(title)}
+    </div>
+    <div class="sheet-rows">
+      ${visible.map(key=>`
+        <div class="sheet-row">
+          <div class="sheet-label">
+            ${esc(fieldLabel(key))}
+          </div>
+          <div class="sheet-value">
+            ${formatFieldValue(gem,CFG.fieldMap[key])}
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  </section>`;
+}
+
+function renderProfile() {
+  const gem = getGem(state.selectedGem);
+
+  if (!gem) return empty("Gemstone not found.");
+
+  const col1 = [
+    ["Mineral Family",["mineralFamily"]],
+    ["Physical Properties",[
+      "mohs","crystalSystem","cleavage",
+      "fracture","streak","tenacity",
+      "luster","transparency"
+    ]],
+    ["Composition",[
+      "primaryMinerals","secondaryMinerals",
+      "accessoryMinerals","inclusions"
+    ]],
+    ["Mineral Relationships",[
+      "mineralSpecies","mineralGroup",
+      "varieties","relatesTo"
+    ]]
+  ];
+
+  const col2 = [
+    ["Appearance & Origins",[
+      "otherEffects","colors","countries",
+      "discoveryYear","discoveryLocation",
+      "discoverer","etymology"
+    ]],
+    ["Cultural Associations",[
+      "zodiacStone","planetaryStone",
+      "birthStone","anniversaryStone",
+      "meaning","connectedWith"
+    ]],
+    ["Value & Usage",[
+      "priceRange","collectorValue",
+      "jewelry","safety"
+    ]],
+    ["Geological Relationships",[
+      "associatedMinerals","geologicalOrigin",
+      "hostRocks"
+    ]]
+  ];
+
+  return `<div class="sheet-toolbar">
+    <button class="button button-ghost"
+      data-action="go-library">← Library</button>
+    <div class="page-actions">
+      <button class="button button-secondary button-small"
+        data-action="compare-gem"
+        data-id="${esc(gem.id)}">Compare</button>
+      <button class="button button-secondary button-small"
+        data-action="relations-gem"
+        data-id="${esc(gem.id)}">Relations</button>
+      <button class="button button-primary button-small"
+        data-action="edit-gem"
+        data-id="${esc(gem.id)}">Edit</button>
+    </div>
+  </div>
+
+  <article class="gem-sheet">
+    <header class="sheet-header">
+      <div class="eyebrow">GEMSTONE RECORD</div>
+      <h1>${esc(gem.name)}</h1>
+      ${hasValue(gem.title) ?
+        `<div class="sheet-subtitle">
+          ${esc(joinValue(gem.title))}
+        </div>` : ""}
+      <div class="sheet-header-tags">
+        ${tags(gem.classifications,true)}
+        ${gem.rarity ? tag(gem.rarity) : ""}
+      </div>
+    </header>
+
+    <div class="sheet-grid">
+      <div class="sheet-column">
+        ${col1.map(([title,keys])=>
+          profileSection(gem,title,keys)
+        ).join("")}
+      </div>
+      <div class="sheet-column">
+        ${col2.map(([title,keys])=>
+          profileSection(gem,title,keys)
+        ).join("")}
+      </div>
+    </div>
+
+    <footer class="sheet-footer">
+      <span>Updated:
+        ${gem.updatedAt ?
+          esc(new Date(gem.updatedAt)
+            .toLocaleDateString()) : "—"}
+      </span>
+      <div class="page-actions">
+        <button class="button button-ghost button-small"
+          data-action="duplicate-gem"
+          data-id="${esc(gem.id)}">Duplicate</button>
+        <button class="button button-ghost button-small"
+          data-action="delete-gem"
+          data-id="${esc(gem.id)}">Delete</button>
+      </div>
+    </footer>
+  </article>`;
+}
+
+/* ==========================================
+   EQUAL-CONTRIBUTION COMPARISON
+========================================== */
+
+function compareField(field,a,b) {
+  if (!hasValue(a) || !hasValue(b)) {
+    return {
+      comparable:false,
+      score:null,
+      status:"unknown"
+    };
+  }
+
+  const setA = new Set(arrayOf(a).map(canonical));
+  const setB = new Set(arrayOf(b).map(canonical));
+  const union = new Set([...setA,...setB]);
+
+  let shared = 0;
+
+  for (const item of setA) {
+    if (setB.has(item)) shared++;
+  }
+
+  const score = union.size ?
+    shared/union.size : 0;
+
+  return {
+    comparable:true,
+    score,
+    status:score === 1 ?
+      "match" :
+      score === 0 ?
+        "different" : "partial"
+  };
+}
+
+function compareGems(a,b) {
+  if (!a || !b) return null;
+
+  const results = CFG.comparableFields.map(field=>({
+    field,
+    a:a[field.key],
+    b:b[field.key],
+    ...compareField(field,a[field.key],b[field.key])
+  }));
+
+  const measured = results.filter(r=>r.comparable);
+  const score = measured.length ?
+    round(measured.reduce((sum,r)=>sum+r.score,0) /
+      measured.length * 100,1) : null;
+
+  return {
+    score,
+    compared:measured.length,
+    matches:measured.filter(r=>r.status==="match").length,
+    partials:measured.filter(r=>r.status==="partial").length,
+    differences:measured.filter(r=>r.status==="different").length,
+    results
+  };
+}
+
+function similarityText(result) {
+  return result?.score === null ||
+    result?.score === undefined ?
+    "Not enough data" : `${result.score}%`;
+}
+
+function comparisonStatus(result) {
+  const labels = {
+    match:"Match",
+    partial:"Partial",
+    different:"Different",
+    unknown:"No data"
+  };
+
+  return `<span class="compare-status
+    status-${result.status}">
+    ${labels[result.status]}</span>`;
+}
+
+function renderComparison() {
+  const a = getGem(state.compareA);
+  const b = getGem(state.compareB);
+
+  return `<div class="page-heading">
+    <div>
+      <div class="eyebrow">ANALYSIS</div>
+      <h1>Gemstone Comparison</h1>
+      <p>Every comparable property contributes equally.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Direct Comparison</h2>
+    </div>
+    <div class="compare-selectors">
+      <div class="field">
+        <label>Gemstone A</label>
+        <select class="select" id="compare-a">
+          ${gemOptions(state.compareA)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Gemstone B</label>
+        <select class="select" id="compare-b">
+          ${gemOptions(state.compareB)}
+        </select>
+      </div>
+    </div>
+    <div class="divider"></div>
+    ${a && b ? renderDirectComparison(a,b) :
+      empty("Create at least two gemstones to compare.")}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Multiple Gemstone Comparison</h2>
+    </div>
+    <p class="section-description">
+      Select gemstones to view their properties side by side.
+    </p>
+    <div id="multi-comparison">
+      ${renderMultiComparison()}
+    </div>
+  </div>`;
+}
+
+function renderDirectComparison(a,b) {
+  const result = compareGems(a,b);
+
+  return `<div class="compare-summary">
+    <div class="compare-score">
+      ${result.score ?? "—"}<small>
+        ${result.score === null ? "" : "%"}</small>
+    </div>
+    <div style="flex:1;min-width:0">
+      <strong>${esc(a.name)} &amp; ${esc(b.name)}</strong>
+      <div class="compare-meter">
+        <div class="compare-meter-fill"
+          style="width:${result.score ?? 0}%"></div>
+      </div>
+      <div class="muted" style="font-size:11px">
+        ${result.compared} compared fields ·
+        ${result.matches} matches ·
+        ${result.partials} partial ·
+        ${result.differences} different
+      </div>
+    </div>
+  </div>
+
+  <p class="chart-note">
+    Missing fields are excluded. Each shared field
+    contributes one equal share to the final score.
+    Manual connections do not add similarity points.
+  </p>
+
+  <div class="comparison-table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        <th>Property</th>
+        <th>${esc(a.name)}</th>
+        <th>${esc(b.name)}</th>
+        <th>Result</th>
+      </tr></thead>
+      <tbody>
+        ${CFG.sections.map(section=>{
+          const fields = section.fields.filter(
+            f=>f.compare !== false
+          );
+
+          if (!fields.length) return "";
+
+          return `<tr class="comparison-group-title">
+            <td colspan="4">${esc(section.title)}</td>
+          </tr>` + fields.map(field=>{
+            const r = result.results.find(
+              item=>item.field.key === field.key
+            );
+
+            return `<tr>
+              <td>${esc(field.label)}</td>
+              <td>${formatFieldValue(a,field)}</td>
+              <td>${formatFieldValue(b,field)}</td>
+              <td>${comparisonStatus(r)}</td>
+            </tr>`;
+          }).join("");
+        }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderMultiComparison() {
+  if (!state.gems.length) {
+    return empty("No gemstones available.");
+  }
+
+  const selected = state.multiIds
+    .map(getGem).filter(Boolean);
+
+  return `<div class="multi-gem-grid">
+    ${sortGems(state.gems).map(gem=>`
+      <label class="multi-option">
+        <input type="checkbox"
+          data-multi-id="${esc(gem.id)}"
+          ${state.multiIds.includes(gem.id) ?
+            "checked" : ""}>
+        ${esc(gem.name)}
+      </label>
+    `).join("")}
+  </div>
+
+  <div class="divider"></div>
+
+  ${selected.length < 2 ?
+    `<p class="muted">Select two or more gemstones.</p>` :
+    `<div class="table-scroll">
+      <table class="data-table">
+        <thead><tr><th>Property</th>
+          ${selected.map(g=>`<th>${esc(g.name)}</th>`)
+            .join("")}
+        </tr></thead>
+        <tbody>
+          ${CFG.comparableFields.map(field=>`
+            <tr>
+              <td>${esc(field.label)}</td>
+              ${selected.map(g=>`
+                <td>${formatFieldValue(g,field)}</td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="divider"></div>
+    <h3>Pairwise Similarity</h3>
+    <div class="table-scroll">
+      <table class="data-table">
+        <thead><tr>
+          <th>Gemstones</th><th>Similarity</th>
+          <th>Compared Fields</th>
+        </tr></thead>
+        <tbody>
+          ${selected.flatMap((a,i)=>
+            selected.slice(i+1).map(b=>{
+              const r=compareGems(a,b);
+              return `<tr>
+                <td>${esc(a.name)} / ${esc(b.name)}</td>
+                <td>${similarityText(r)}</td>
+                <td>${r.compared}</td>
+              </tr>`;
+            })
+          ).join("")}
+        </tbody>
+      </table>
+    </div>`
+  }`;
+}
+
+/* ==========================================
+   RELATIONSHIP INTELLIGENCE
+========================================== */
+
+const RELATION_FIELDS = [
+  {key:"mineralGroup",label:"Same Mineral Group",
+    mode:"family"},
+  {key:"mineralSpecies",label:"Same Species",
+    mode:"family"},
+  {key:"varieties",label:"Shared Varieties",
+    mode:"family"},
+  {key:"primaryMinerals",label:"Shared Primary Minerals",
+    mode:"composition"},
+  {key:"secondaryMinerals",label:"Shared Secondary Minerals",
+    mode:"composition"},
+  {key:"accessoryMinerals",label:"Shared Accessory Minerals",
+    mode:"composition"},
+  {key:"inclusions",label:"Shared Inclusions",
+    mode:"composition"},
+  {key:"associatedMinerals",label:"Associated Minerals",
+    mode:"geology"},
+  {key:"geologicalOrigin",label:"Geological Origin",
+    mode:"geology"},
+  {key:"hostRocks",label:"Host Rocks",
+    mode:"geology"}
+];
+
+function manualNeighbors(id) {
+  const found = new Set();
+
+  const gem = getGem(id);
+  if (!gem) return [];
+
+  for (const link of gem.relatesTo) {
+    if (getGem(link) && link !== id) found.add(link);
+  }
+
+  for (const other of state.gems) {
+    if (other.id !== id &&
+        other.relatesTo.includes(id)) {
+      found.add(other.id);
+    }
+  }
+
+  return [...found];
+}
+
+function sharedRelations(a,b) {
+  if (!a || !b) return [];
+
+  const results = [];
+
+  for (const field of RELATION_FIELDS) {
+    const first = valuesOf(a,field.key);
+    const second = new Set(
+      valuesOf(b,field.key).map(canonical)
+    );
+
+    const common = first.filter(
+      item=>second.has(canonical(item))
+    );
+
+    if (common.length) {
+      results.push({
+        key:field.key,
+        label:field.label,
+        mode:field.mode,
+        values:common
+      });
+    }
+  }
+
+  return results;
+}
+
+function relationshipResults(gem) {
+  if (!gem) return [];
+
+  return state.gems
+    .filter(other=>other.id !== gem.id)
+    .map(other=>{
+      const comparison=compareGems(gem,other);
+      const manual=manualNeighbors(gem.id)
+        .includes(other.id);
+      const shared=sharedRelations(gem,other);
+
+      return {gem:other,comparison,manual,shared};
+    })
+    .sort((a,b)=>{
+      if (state.relationSort==="name") {
+        return a.gem.name.localeCompare(b.gem.name);
+      }
+
+      if (state.relationSort==="manual" &&
+          a.manual !== b.manual) {
+        return a.manual ? -1 : 1;
+      }
+
+      return (b.comparison.score??-1) -
+        (a.comparison.score??-1) ||
+        b.comparison.compared-a.comparison.compared;
+    });
+}
+
+function relationNeighbors(id,mode="all") {
+  const base = getGem(id);
+  if (!base) return [];
+
+  return state.gems
+    .filter(g=>g.id!==id)
+    .filter(g=>{
+      const manual = manualNeighbors(id).includes(g.id);
+      const shared = sharedRelations(base,g);
+
+      if (mode==="manual") return manual;
+      if (mode==="all") return manual || shared.length>0;
+
+      return shared.some(r=>r.mode===mode);
+    })
+    .map(g=>g.id);
+}
+
+function shortestPath(start,end,mode="all") {
+  if (!getGem(start)||!getGem(end)) return null;
+  if (start===end) return [start];
+
+  const queue=[[start]];
+  const visited=new Set([start]);
+
+  while (queue.length) {
+    const path=queue.shift();
+    const id=path[path.length-1];
+
+    for (const next of relationNeighbors(id,mode)) {
+      if (visited.has(next)) continue;
+
+      const candidate=[...path,next];
+      if (next===end) return candidate;
+
+      visited.add(next);
+      queue.push(candidate);
+    }
+  }
+
+  return null;
+}
+
+/* ==========================================
+   FAMILY HIERARCHY
+========================================== */
+
+function buildFamilyTree(gems) {
+  const groups=new Map();
+
+  for (const gem of gems) {
+    const groupNames=valuesOf(gem,"mineralGroup");
+    const speciesNames=valuesOf(gem,"mineralSpecies");
+
+    const group=groupNames[0] ||
+      valuesOf(gem,"mineralFamily")[0] ||
+      "Unclassified Group";
+
+    const species=speciesNames[0] ||
+      "Unclassified Species";
+
+    const groupKey=canonical(group);
+    const speciesKey=canonical(species);
+
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey,{
+        name:group,
+        species:new Map()
+      });
+    }
+
+    const parent=groups.get(groupKey);
+
+    if (!parent.species.has(speciesKey)) {
+      parent.species.set(speciesKey,{
+        name:species,
+        gems:[]
+      });
+    }
+
+    parent.species.get(speciesKey).gems.push(gem);
+  }
+
+  return [...groups.values()].sort((a,b)=>
+    a.name.localeCompare(b.name)
+  );
+}
+
+function renderFamilyTree() {
+  const search=canonical(state.relationFilter);
+
+  const matching=state.gems.filter(gem=>
+    !search ||
+    [
+      gem.name,
+      joinValue(gem.mineralGroup),
+      joinValue(gem.mineralSpecies),
+      joinValue(gem.mineralFamily),
+      joinValue(gem.varieties)
+    ].some(value=>canonical(value).includes(search))
+  );
+
+  const groups=buildFamilyTree(matching);
+
+  if (!groups.length) {
+    return empty("No matching mineral families.");
+  }
+
+  return `<div class="stack">
+    ${groups.map(group=>`
+      <div class="panel">
+        <div class="panel-title">
+          <h3>◇ ${esc(group.name)}</h3>
+          <span class="panel-subtitle">
+            Mineral group
+          </span>
+        </div>
+
+        <div class="stack">
+          ${[...group.species.values()]
+            .sort((a,b)=>a.name.localeCompare(b.name))
+            .map(species=>`
+              <div class="relationship-entry">
+                <div class="relationship-entry-header">
+                  <strong>${esc(species.name)}</strong>
+                  <span class="muted" style="font-size:11px">
+                    Species
+                  </span>
+                </div>
+
+                <div class="tags" style="margin-top:12px">
+                  ${sortGems(species.gems)
+                    .map(gem=>gemButton(gem)).join("")}
+                </div>
+
+                ${species.gems.some(g=>g.varieties.length) ?
+                  `<p class="chart-note">
+                    Recorded varieties:
+                    ${esc(distinct(species.gems.flatMap(
+                      g=>valuesOf(g,"varieties")
+                    )).join(", "))}
+                  </p>` : ""}
+              </div>
+            `).join("")}
+        </div>
+      </div>
+    `).join("")}
+  </div>`;
+}
+
+function renderRelationList(mode) {
+  const gem=getGem(state.relationId);
+  if (!gem) return empty("Create a gemstone first.");
+
+  const results=relationshipResults(gem).filter(item=>
+    mode==="all" ||
+    (mode==="manual" ? item.manual :
+      item.shared.some(r=>r.mode===mode))
+  );
+
+  if (!results.length) {
+    return empty("No relationships recorded in this category.");
+  }
+
+  return `<div class="relationship-list">
+    ${results.map(item=>{
+      const shared=mode==="all"?
+        item.shared :
+        item.shared.filter(r=>r.mode===mode);
+
+      return `<div class="relationship-entry">
+        <div class="relationship-entry-header">
+          <button class="link-button relationship-name"
+            data-action="view-gem"
+            data-id="${esc(item.gem.id)}">
+            ${esc(item.gem.name)}
+          </button>
+          <span class="relationship-score">
+            ${similarityText(item.comparison)}
+          </span>
+        </div>
+
+        <div class="compare-meter">
+          <div class="compare-meter-fill"
+            style="width:${item.comparison.score??0}%">
+          </div>
+        </div>
+
+        <div class="relationship-meta">
+          ${item.comparison.compared} comparable fields
+          ${item.manual?" · Manual connection":""}
+        </div>
+
+        ${shared.map(connection=>`
+          <div style="margin-top:11px">
+            <div class="eyebrow">
+              ${esc(connection.label)}
+            </div>
+            <div class="tags">
+              ${tags(connection.values)}
+            </div>
+          </div>
+        `).join("")}
+
+        <div class="page-actions" style="margin-top:12px">
+          <button class="button button-ghost button-small"
+            data-action="compare-pair"
+            data-a="${esc(gem.id)}"
+            data-b="${esc(item.gem.id)}">
+            Compare
+          </button>
+        </div>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderRelationshipMap(gem,mode) {
+  const results=relationshipResults(gem)
+    .filter(item=>
+      mode==="all" ?
+        (item.shared.length || item.manual) :
+      mode==="manual" ? item.manual :
+        item.shared.some(r=>r.mode===mode)
+    ).slice(0,10);
+
+  if (!results.length) return "";
+
+  const cx=250,cy=170,rx=185,ry=113;
+
+  const edges=results.map((item,i)=>{
+    const angle=2*Math.PI*i/results.length-Math.PI/2;
+    const x=cx+Math.cos(angle)*rx;
+    const y=cy+Math.sin(angle)*ry;
+
+    return `<line x1="${cx}" y1="${cy}"
+      x2="${x}" y2="${y}"
+      stroke="#a6bba1"
+      stroke-opacity="${item.manual?.75:.35}"
+      stroke-width="${item.manual?2.8:1.4}"
+      ${item.manual?"":'stroke-dasharray="4 4"'} />`;
+  }).join("");
+
+  const nodes=results.map((item,i)=>{
+    const angle=2*Math.PI*i/results.length-Math.PI/2;
+    const x=cx+Math.cos(angle)*rx;
+    const y=cy+Math.sin(angle)*ry;
+
+    const label=item.gem.name.length>18 ?
+      item.gem.name.slice(0,17)+"…" : item.gem.name;
+
+    return `<g>
+      <circle cx="${x}" cy="${y}" r="25"
+        fill="#344037" stroke="#829781"/>
+      <text x="${x}" y="${y+4}"
+        text-anchor="middle" font-size="17"
+        fill="#e9ede8">◇</text>
+      <text x="${x}" y="${y+41}"
+        text-anchor="middle" font-size="10"
+        fill="#e9ede8">${esc(label)}</text>
+      <text x="${x}" y="${y+54}"
+        text-anchor="middle" font-size="9"
+        fill="#a6bba1">
+        ${item.comparison.score===null?
+          "No data":item.comparison.score+"%"}
+      </text>
+    </g>`;
+  }).join("");
+
+  return `<div class="relationship-graph">
+    <svg viewBox="0 0 500 355"
+      role="img"
+      aria-label="Relationship map for ${esc(gem.name)}">
+      ${edges}${nodes}
+      <circle cx="${cx}" cy="${cy}" r="35"
+        fill="#60795d" stroke="#a6bba1"/>
+      <text x="${cx}" y="${cy+6}"
+        text-anchor="middle" font-size="23"
+        fill="white">◇</text>
+      <text x="${cx}" y="${cy+54}"
+        text-anchor="middle" font-size="13"
+        fill="#e9ede8">${esc(gem.name.slice(0,26))}</text>
+    </svg>
+  </div>
+
+  <p class="chart-note">
+    Solid = manually linked. Dashed = automatically
+    discovered. Use the entries below the map to
+    open profiles or inspect exact connections.
+  </p>`;
+}
+
+function renderRelationships() {
+  const gem=getGem(state.relationId);
+
+  const modes=[
+    ["family","Family"],
+    ["composition","Composition"],
+    ["geology","Geology"],
+    ["all","All Relations"],
+    ["manual","Manual"]
+  ];
+
+  const mode=state.relationMode;
+
+  return `<div class="page-heading">
+    <div>
+      <div class="eyebrow">MINERAL CONNECTIONS</div>
+      <h1>Family Explorer</h1>
+      <p>Classification trees, composition,
+        geological links and gemstone relationships.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Relationship Views</h2>
+    </div>
+
+    <div class="segmented">
+      ${modes.map(([id,label])=>`
+        <button class="${mode===id?"active":""}"
+          data-action="relation-mode"
+          data-mode="${id}">
+          ${label}
+        </button>
+      `).join("")}
+    </div>
+  </div>
+
+  ${mode==="family" ? `
+    <div class="panel">
+      <div class="panel-title">
+        <h2>Mineral Classification Tree</h2>
+      </div>
+      <div class="field">
+        <label>Search families and gemstones</label>
+        <input type="search" class="input"
+          id="family-filter"
+          value="${esc(state.relationFilter)}"
+          placeholder="Group, species, gemstone...">
+      </div>
+    </div>
+    <div id="family-tree">
+      ${renderFamilyTree()}
+    </div>
+  `:""}
+
+  <div class="panel" style="margin-top:17px">
+    <div class="panel-title">
+      <h2>${mode==="family"?
+        "Gemstone Family Relationships":
+        mode==="composition"?
+        "Composition Network":
+        mode==="geology"?
+        "Geological Network":
+        mode==="manual"?
+        "Manual Connections":
+        "Combined Relationship Network"}</h2>
+    </div>
+
+    <div class="control-row">
+      <div class="field">
+        <label>Selected Gemstone</label>
+        <select id="relation-gem" class="select">
+          ${gemOptions(state.relationId)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Order By</label>
+        <select id="relation-sort" class="select">
+          ${options([
+            {value:"similarity",label:"Closest Similarity"},
+            {value:"manual",label:"Manual First"},
+            {value:"name",label:"Name A–Z"}
+          ],state.relationSort)}
+        </select>
+      </div>
+    </div>
+
+    ${gem ? `
+      ${renderRelationshipMap(gem,mode)}
+      <div class="panel-title">
+        <h3>Connected Gemstones</h3>
+      </div>
+      ${renderRelationList(mode)}
+    `:empty("No gemstones saved yet.")}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Connection Path</h2>
+    </div>
+    <p class="section-description">
+      Find the shortest path through recorded
+      gemstone connections.
+    </p>
+
+    <div class="control-row">
+      <div class="field">
+        <label>From</label>
+        <select id="path-source" class="select">
+          ${gemOptions(state.relationId)}
+        </select>
+      </div>
+      <div class="field">
+        <label>To</label>
+        <select id="path-target" class="select">
+          ${gemOptions(state.relationTarget)}
+        </select>
+      </div>
+    </div>
+
+    <div id="relationship-path">
+      ${renderPath()}
+    </div>
+  </div>`;
+}
+
+function renderPath() {
+  const start=state.relationId;
+  const end=state.relationTarget;
+
+  if (!start || !end) {
+    return `<p class="muted">Choose two gemstones.</p>`;
+  }
+
+  const path=shortestPath(start,end,
+    state.relationMode==="family"?
+      "family":state.relationMode);
+
+  if (!path) {
+    return `<p class="muted">
+      No connection path found for this relationship type.
+    </p>`;
+  }
+
+  return `<div class="path-list">
+    ${path.map((id,i)=>`
+      ${i?'<span class="path-arrow">→</span>':""}
+      ${tag(getGem(id)?.name||"Unknown",true)}
+    `).join("")}
+  </div>
+  <p class="chart-note">
+    ${path.length-1} connection(s).
+  </p>`;
+}
+
+/* ==========================================
+   STATISTICS
+========================================== */
+
+function statisticsPopulation() {
+  const search=canonical(state.statSearch);
+
+  return state.gems.filter(gem=>{
+    if (state.statRarity &&
+        gem.rarity!==state.statRarity) {
+      return false;
+    }
+
+    if (!search) return true;
+
+    return CFG.fields.some(field=>
+      canonical(joinValue(gem[field.key]," "))
+        .includes(search)
+    );
+  });
+}
+
+function distribution(gems,key) {
+  const map=new Map();
+
+  for (const gem of gems) {
+    for (const value of valuesOf(gem,key)) {
+      const normalized=canonical(value);
+
+      if (!map.has(normalized)) {
+        map.set(normalized,{
+          label:value,
+          value:0,
+          gemIds:[]
+        });
+      }
+
+      const entry=map.get(normalized);
+      entry.value++;
+      entry.gemIds.push(gem.id);
+    }
+  }
+
+  return [...map.values()].sort((a,b)=>
+    b.value-a.value ||
+    a.label.localeCompare(b.label)
+  );
+}
+
+function numericValues(gem,key) {
+  if (key==="mohs") {
+    return valuesOf(gem,key)
+      .map(Number)
+      .filter(Number.isFinite);
+  }
+
+  return arrayOf(gem[key])
+    .filter(v=>v!==null && String(v).trim())
+    .map(Number)
+    .filter(Number.isFinite);
+}
+
+function numericSummary(gems,key) {
+  const numbers=gems
+    .flatMap(g=>numericValues(g,key))
+    .sort((a,b)=>a-b);
+
+  if (!numbers.length) return null;
+
+  const sum=numbers.reduce((a,b)=>a+b,0);
+  const middle=Math.floor(numbers.length/2);
+
+  return {
+    count:numbers.length,
+    average:sum/numbers.length,
+    median:numbers.length%2?
+      numbers[middle]:
+      (numbers[middle-1]+numbers[middle])/2,
+    min:numbers[0],
+    max:numbers[numbers.length-1]
+  };
+}
+
+function numericDistribution(gems,key) {
+  const numbers=gems.flatMap(
+    g=>numericValues(g,key)
+  );
+
+  if (!numbers.length) return [];
+
+  let bins;
+
+  if (key==="mohs") {
+    bins=[0,2,4,6,8,10];
+  } else {
+    const min=Math.min(...numbers);
+    const max=Math.max(...numbers);
+
+    if (min===max) {
+      const members=gems.filter(g=>
+        numericValues(g,key).includes(min)
+      );
+
+      return [{
+        label:String(min),
+        value:members.length,
+        gemIds:members.map(g=>g.id)
+      }];
+    }
+
+    bins=Array.from({length:7},(_,i)=>
+      min+(max-min)*i/6
+    );
+  }
+
+  return bins.slice(0,-1).map((low,i)=>{
+    const high=bins[i+1];
+    const last=i===bins.length-2;
+
+    const members=gems.filter(g=>
+      numericValues(g,key).some(n=>
+        n>=low && (n<high ||
+          (last && n<=high))
+      )
+    );
+
+    return {
+      label:`${formatNumber(low,2)}–${formatNumber(high,2)}`,
+      value:members.length,
+      gemIds:members.map(g=>g.id)
+    };
+  });
+}
+
+function currentDistribution(gems) {
+  if (state.statDimension==="discoveryYear" ||
+      state.statDimension==="mohs") {
+    return numericDistribution(
+      gems,state.statDimension);
+  }
+
+  return distribution(gems,state.statDimension);
+}
+
+function metric(count,total) {
+  return state.statMetric==="percent" ?
+    (total ? round(count/total*100,1):0)+"%" :
+    String(count);
+}
+
+function statBarChart(data,total) {
+  const max=Math.max(1,...data.map(d=>d.value));
+
+  return `<div class="bar-chart">
+    ${data.map((item,i)=>`
+      <button class="bar-row"
+        data-action="stat-detail"
+        data-index="${i}">
+        <span class="bar-label">
+          ${esc(item.label)}
+        </span>
+        <span class="bar-track">
+          <span class="bar-fill"
+            style="width:${item.value/max*100}%"></span>
+        </span>
+        <span class="bar-value">
+          ${metric(item.value,total)}
+        </span>
+      </button>
+    `).join("")}
+  </div>`;
+}
+
+function statDonut(data) {
+  const total=data.reduce((n,d)=>n+d.value,0);
+  if (!total) return empty("No chart data.");
+
+  let position=0;
+
+  const stops=data.map((item,i)=>{
+    const start=position;
+    position+=item.value/total*100;
+
+    return `${CFG.chartColors[
+      i%CFG.chartColors.length
+    ]} ${start}% ${position}%`;
+  }).join(",");
+
+  return `<div class="donut-layout">
+    <div class="donut-chart"
+      style="background:conic-gradient(${stops})">
+      <div class="donut-hole">
+        <strong>${total}</strong>
+        <small>Occurrences</small>
+      </div>
+    </div>
+    <div class="donut-legend">
+      ${data.map((d,i)=>`
+        <div class="legend-row">
+          <span class="legend-dot" style="background:
+            ${CFG.chartColors[i%CFG.chartColors.length]}">
+          </span>
+          <span class="legend-label">${esc(d.label)}</span>
+          <span class="legend-value">${d.value}</span>
+        </div>
+      `).join("")}
+    </div>
+  </div>`;
+}
+
+function statTreemap(data) {
+  const total=data.reduce((n,d)=>n+d.value,0)||1;
+
+  return `<div class="treemap">
+    ${data.map((d,i)=>`
+      <button class="treemap-item"
+        data-action="stat-detail" data-index="${i}"
+        style="flex-grow:${d.value};
+          flex-basis:${Math.max(90,d.value/total*450)}px;
+          background:${CFG.chartColors[
+            i%CFG.chartColors.length
+          ]}">
+        <span>${esc(d.label)}</span>
+        <strong>${d.value}</strong>
+      </button>
+    `).join("")}
+  </div>
+  <p class="chart-note">
+    Treemap tile sizes are approximate.
+  </p>`;
+}
+
+function statTable(data,total) {
+  return `<div class="table-scroll">
+    <table class="data-table">
+      <thead><tr>
+        <th>Category</th><th>Count</th>
+        <th>% of Gems</th><th>Inspect</th>
+      </tr></thead>
+      <tbody>${data.map((d,i)=>`
+        <tr>
+          <td>${esc(d.label)}</td>
+          <td>${d.value}</td>
+          <td>${total ?
+            round(d.value/total*100,1):0}%</td>
+          <td><button class="link-button"
+            data-action="stat-detail"
+            data-index="${i}">View</button></td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderStatChart(data,total) {
+  if (!data.length) {
+    return empty("No values recorded for this property.");
+  }
+
+  switch (state.statChart) {
+    case "donut":return statDonut(data);
+    case "treemap":return statTreemap(data);
+    case "table":return statTable(data,total);
+    default:return statBarChart(data,total);
+  }
+}
+
+function statDetails() {
+  if (state.statDetail===null) {
+    return `<div id="stat-detail"></div>`;
+  }
+
+  const data=currentDistribution(
+    statisticsPopulation()
+  );
+  const item=data[state.statDetail];
+
+  if (!item) return `<div id="stat-detail"></div>`;
+
+  return `<div class="stat-detail" id="stat-detail">
+    <strong>${esc(item.label)}</strong>
+    <p class="chart-note">
+      ${item.gemIds.length} matching gemstones
+    </p>
+    <div class="stat-detail-list">
+      ${item.gemIds.map(id=>{
+        const gem=getGem(id);
+        return gem?gemButton(gem):"";
+      }).join("")}
+    </div>
+  </div>`;
+}
+
+function buildCross(gems,a,b) {
+  const rows=distribution(gems,a).slice(0,12);
+  const columns=distribution(gems,b).slice(0,12);
+
+  const cells=rows.map(row=>
+    columns.map(col=>{
+      const matches=gems.filter(g=>
+        fieldContains(g,a,row.label) &&
+        fieldContains(g,b,col.label)
+      );
+
+      return {
+        count:matches.length,
+        ids:matches.map(g=>g.id)
+      };
+    })
+  );
+
+  return {rows,columns,cells};
+}
+
+function renderCross() {
+  const matrix=buildCross(
+    statisticsPopulation(),
+    state.statCrossA,
+    state.statCrossB
+  );
+
+  if (!matrix.rows.length ||
+      !matrix.columns.length) {
+    return empty("Not enough data for cross-analysis.");
+  }
+
+  const max=Math.max(1,
+    ...matrix.cells.flat().map(c=>c.count)
+  );
+
+  return `<div class="table-scroll">
+    <table class="data-table cross-table">
+      <thead><tr>
+        <th>${esc(fieldLabel(state.statCrossA))}</th>
+        ${matrix.columns.map(c=>`
+          <th>${esc(c.label)}</th>
+        `).join("")}
+      </tr></thead>
+      <tbody>
+        ${matrix.rows.map((row,i)=>`
+          <tr>
+            <th>${esc(row.label)}</th>
+            ${matrix.cells[i].map((cell,j)=>`
+              <td class="cross-cell"
+                style="background:rgba(83,100,81,
+                ${round(.06+cell.count/max*.45,3)})">
+                <button data-action="cross-detail"
+                  data-row="${i}"
+                  data-column="${j}">
+                  ${cell.count||"·"}
+                </button>
+              </td>
+            `).join("")}
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function showCrossDetail(i,j) {
+  const matrix=buildCross(
+    statisticsPopulation(),
+    state.statCrossA,
+    state.statCrossB
+  );
+
+  const cell=matrix.cells[i]?.[j];
+  const row=matrix.rows[i];
+  const col=matrix.columns[j];
+
+  if (!cell||!row||!col) return;
+
+  $("#cross-detail").innerHTML=`
+    <div class="stat-detail">
+      <strong>${esc(row.label)} +
+        ${esc(col.label)}</strong>
+      <p class="chart-note">
+        ${cell.count} matching gemstones
+      </p>
+      <div class="stat-detail-list">
+        ${cell.ids.map(id=>{
+          const gem=getGem(id);
+          return gem?gemButton(gem):"";
+        }).join("")}
+      </div>
+    </div>`;
+}
+
+function renderNumericOverview(gems) {
+  const properties=[
+    {key:"mohs",label:"Mohs Hardness"},
+    {key:"discoveryYear",label:"Discovery Year"}
+  ];
+
+  return `<div class="table-scroll">
+    <table class="data-table">
+      <thead><tr>
+        <th>Property</th><th>Recorded</th>
+        <th>Average</th><th>Median</th>
+        <th>Minimum</th><th>Maximum</th>
+      </tr></thead>
+      <tbody>
+        ${properties.map(p=>{
+          const s=numericSummary(gems,p.key);
+          return `<tr>
+            <td>${p.label}</td>
+            <td>${s?.count??0}</td>
+            <td>${s?formatNumber(s.average,2):"—"}</td>
+            <td>${s?formatNumber(s.median,2):"—"}</td>
+            <td>${s?formatNumber(s.min,2):"—"}</td>
+            <td>${s?formatNumber(s.max,2):"—"}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+  </div>`;
+}
+
+function renderStatistics() {
+  const population=statisticsPopulation();
+  const data=currentDistribution(population);
+  const dimensions=[
+    ...CFG.statisticsDimensions.filter(d=>d.key!=="mohs"),
+    {key:"discoveryYear",label:"Discovery Year"},
+    {key:"mohs",label:"Mohs Hardness"}
+  ];
+
+  const counted=data.reduce((n,d)=>n+d.value,0);
+
+  return `<div class="page-heading">
+    <div>
+      <div class="eyebrow">LIBRARY ANALYTICS</div>
+      <h1>Statistics</h1>
+      <p>Compare categories, materials and
+        geological characteristics.</p>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:18px">
+    <div class="panel-title"><h2>Filters</h2></div>
+    <div class="control-row">
+      <div class="field search-field">
+        <label>Search Within Statistics</label>
+        <input id="stat-search" class="input"
+          type="search" value="${esc(state.statSearch)}"
+          placeholder="Search the collection...">
+      </div>
+      <div class="field">
+        <label>Rarity</label>
+        <select id="stat-rarity" class="select">
+          ${options(CFG.rarities,
+            state.statRarity,"All rarities")}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="stat-overview">
+    ${[
+      ["Gemstones",population.length],
+      ["Mineral Species",
+        distribution(population,"mineralSpecies").length],
+      ["Countries",
+        distribution(population,"countries").length],
+      ["Mineral Groups",
+        distribution(population,"mineralGroup").length]
+    ].map(([label,value])=>`
+      <div class="stat-tile">
+        <div class="stat-tile-label">${label}</div>
+        <div class="stat-tile-value">${value}</div>
+      </div>
+    `).join("")}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Category Analysis</h2>
+    </div>
+    <div class="control-row">
+      <div class="field">
+        <label>Property</label>
+        <select id="stat-dimension" class="select">
+          ${options(dimensions.map(d=>({
+            value:d.key,label:d.label
+          })),state.statDimension)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Chart Type</label>
+        <select id="stat-chart" class="select">
+          ${options([
+            {value:"bar",label:"Ranked Bar Chart"},
+            {value:"donut",label:"Donut Chart"},
+            {value:"treemap",label:"Treemap"},
+            {value:"table",label:"Data Table"}
+          ],state.statChart)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Measurement</label>
+        <select id="stat-metric" class="select">
+          ${options([
+            {value:"records",label:"Gemstone Count"},
+            {value:"percent",label:"Percentage"}
+          ],state.statMetric)}
+        </select>
+      </div>
+    </div>
+
+    ${renderStatChart(data,population.length)}
+
+    <p class="chart-note">
+      ${data.length} categories ·
+      ${counted} recorded occurrences.
+      One gemstone may appear in multiple categories.
+    </p>
+
+    ${statDetails()}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Cross-Analysis</h2>
+    </div>
+    <p class="section-description">
+      Compare two properties across all filtered gemstones.
+    </p>
+
+    <div class="control-row">
+      <div class="field">
+        <label>Rows</label>
+        <select id="cross-a" class="select">
+          ${options(CFG.statisticsDimensions.map(d=>({
+            value:d.key,label:d.label
+          })),state.statCrossA)}
+        </select>
+      </div>
+      <div class="field">
+        <label>Columns</label>
+        <select id="cross-b" class="select">
+          ${options(CFG.statisticsDimensions.map(d=>({
+            value:d.key,label:d.label
+          })),state.statCrossB)}
+        </select>
+      </div>
+    </div>
+
+    <div id="cross-analysis">
+      ${renderCross()}
+    </div>
+
+    <p class="chart-note">
+      Up to twelve categories per axis.
+      Select a cell to inspect its gemstones.
+    </p>
+    <div id="cross-detail"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Numerical Properties</h2>
+    </div>
+    ${renderNumericOverview(population)}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">
+      <h2>Most Common Characteristics</h2>
+    </div>
+    <div class="panel-grid">
+      ${[
+        "classifications","mineralSpecies",
+        "primaryMinerals","inclusions",
+        "associatedMinerals","geologicalOrigin",
+        "hostRocks","colors"
+      ].map(key=>{
+        const values=distribution(population,key)
+          .slice(0,5);
+        return `<div>
+          <h3>${esc(fieldLabel(key))}</h3>
+          ${values.length ?
+            statBarChart(values,population.length) :
+            `<p class="muted">No recorded values.</p>`}
+        </div>`;
+      }).join("")}
+    </div>
+  </div>`;
+}
+
+/* ==========================================
+   CENTRAL ACTION HANDLER
+========================================== */
+
+function handleAction(button) {
+  const action=button.dataset.action;
+  const id=button.dataset.id;
+
+  switch(action) {
     case "new-gem":
       openEditor();
+      break;
+
+    case "go-library":
+      navigate("library");
       break;
 
     case "view-gem":
@@ -5209,50 +2857,43 @@ function handleAction(element) {
       deleteGem(id);
       break;
 
-    case "go-library":
-      navigate("library");
-      break;
-
     case "compare-gem":
-
-      state.compareA = id;
-
-      state.compareB =
-        state.gems.find(gem => gem.id !== id)?.id || "";
-
+      state.compareA=id;
+      state.compareB=state.gems.find(
+        g=>g.id!==id
+      )?.id||"";
       navigate("compare");
       break;
 
     case "compare-pair":
-
-      state.compareA = element.dataset.a;
-      state.compareB = element.dataset.b;
-
+      state.compareA=button.dataset.a;
+      state.compareB=button.dataset.b;
       navigate("compare");
       break;
 
     case "relations-gem":
-
-      state.relationId = id;
-
+      state.relationId=id;
       navigate("relations");
       break;
 
-    case "add-tag":
-      addTag(element.dataset.field);
+    case "relation-mode":
+      state.relationMode=button.dataset.mode;
+      render();
+      break;
+
+    case "add-value":
+      addValue(button.dataset.field);
+      break;
+
+    case "remove-value":
+      removeValue(
+        button.dataset.field,
+        Number(button.dataset.index)
+      );
       break;
 
     case "add-link":
-      addLink(element.dataset.field);
-      break;
-
-    case "remove-tag":
-
-      removeTag(
-        element.dataset.field,
-        Number(element.dataset.index)
-      );
-
+      addLink(button.dataset.field);
       break;
 
     case "recover-draft":
@@ -5260,17 +2901,15 @@ function handleAction(element) {
       break;
 
     case "discard-draft":
-
       confirmAction(
         "Discard Draft",
-        "Delete the locally preserved draft?",
-        () => {
+        "Delete the locally saved draft?",
+        ()=>{
           clearDraft();
           render();
           toast("Draft discarded.");
         }
       );
-
       break;
 
     case "export":
@@ -5281,72 +2920,31 @@ function handleAction(element) {
       $("#import-file").click();
       break;
 
-case "add-flex":
-  addFlexibleValue(element.dataset.field);
-  break;
-
-case "remove-flex":
-  removeFlexibleValue(
-    element.dataset.field,
-    Number(element.dataset.index)
-  );
-  break;
-
-case "toggle-flex":
-  toggleFlexibleField(
-    element.dataset.field,
-    element.dataset.enabled === "true"
-  );
-  break;
-
     case "stat-detail":
-
-      state.statDetail = {
-        dimension:state.statDimension,
-        index:Number(element.dataset.index)
-      };
-
-      const population = statisticsPopulation();
-
-      const target = $("#stat-detail");
-
-      if (target) {
-
-        const wrapper = document.createElement("div");
-
-        wrapper.innerHTML = renderStatDetail(population);
-
-        target.replaceWith(wrapper.firstElementChild);
-
+      state.statDetail=Number(button.dataset.index);
+      {
+        const target=$("#stat-detail");
+        if (target) target.outerHTML=statDetails();
       }
-
       break;
 
     case "cross-detail":
-
       showCrossDetail(
-        Number(element.dataset.row),
-        Number(element.dataset.column)
+        Number(button.dataset.row),
+        Number(button.dataset.column)
       );
-
       break;
-
   }
-
 }
 
-
-/* =========================================
-   EVENT LISTENERS
-========================================= */
+/* ==========================================
+   EVENTS
+========================================== */
 
 function initializeEvents() {
 
-  // Navigation
-
-  document.addEventListener("click", event => {
-
-    const nav = event.target.closest(
+  document.addEventListener("click",event=>{
+    const nav=event.target.closest(
       "button[data-page]"
     );
 
@@ -5355,414 +2953,280 @@ function initializeEvents() {
       return;
     }
 
-    const action = event.target.closest(
+    const action=event.target.closest(
       "button[data-action]"
     );
 
     if (action) {
+      event.preventDefault();
       handleAction(action);
     }
-
   });
 
-
-  // Global buttons
-
   $("#new-gem-button").addEventListener(
-    "click",
-    () => openEditor()
+    "click",()=>openEditor()
   );
 
   $("#export-button").addEventListener(
-    "click",
-    exportLibrary
+    "click",exportLibrary
   );
 
   $("#import-button").addEventListener(
-    "click",
-    () => $("#import-file").click()
+    "click",()=>$("#import-file").click()
   );
 
   $("#reset-button").addEventListener(
-    "click",
-    clearLibrary
+    "click",clearLibrary
   );
 
-
-  // Editor
-
   $("#close-editor-button").addEventListener(
-    "click",
-    discardAndCloseEditor
+    "click",requestCloseEditor
   );
 
   $("#cancel-editor-button").addEventListener(
-    "click",
-    discardAndCloseEditor
+    "click",requestCloseEditor
   );
 
   $("#gem-form").addEventListener(
-    "submit",
-    submitEditor
+    "submit",submitEditor
   );
 
+  $("#gem-form").addEventListener(
+    "input",event=>{
+      const input=event.target;
 
-$("#gem-form").addEventListener(
-  "input",
-  event => {
-
-    const input = event.target;
-
-    if (input.dataset.flexSingle) {
-
-      updateFlexibleSingle(input);
-      return;
+      if (input.name &&
+          input.type!=="checkbox") {
+        updateDraftInput(input);
+      }
     }
+  );
 
-    if (
-      input.name &&
-      !input.matches('[type="checkbox"]')
-    ) {
-      updateDraftField(input);
+  $("#gem-form").addEventListener(
+    "change",event=>{
+      const input=event.target;
+
+      if (input.dataset.flexToggle) {
+        toggleMultiple(
+          input.dataset.flexToggle,
+          input.checked
+        );
+        return;
+      }
+
+      if (input.name) {
+        updateDraftInput(input);
+      }
     }
+  );
 
-  }
-);
+  $("#gem-form").addEventListener(
+    "keydown",event=>{
+      if (event.key!=="Enter") return;
 
-
-$("#gem-form").addEventListener(
-  "change",
-  event => {
-
-    const input = event.target;
-
-    if (input.dataset.flexToggle) {
-
-      toggleFlexibleField(
-        input.dataset.flexToggle,
-        input.checked
+      const input=event.target.closest(
+        "[data-add-input]"
       );
 
-      return;
+      if (input) {
+        event.preventDefault();
+        addValue(input.dataset.addInput);
+      }
+    }
+  );
+
+  main.addEventListener("change",event=>{
+    const input=event.target;
+
+    switch(input.id) {
+      case "library-rarity":
+        state.libraryRarity=input.value;
+        renderLibraryResults();
+        break;
+
+      case "library-sort":
+        state.librarySort=input.value;
+        renderLibraryResults();
+        break;
+
+      case "compare-a":
+        state.compareA=input.value;
+        render();
+        break;
+
+      case "compare-b":
+        state.compareB=input.value;
+        render();
+        break;
+
+      case "relation-gem":
+        state.relationId=input.value;
+        render();
+        break;
+
+      case "relation-sort":
+        state.relationSort=input.value;
+        render();
+        break;
+
+      case "path-source":
+        state.relationId=input.value;
+        render();
+        break;
+
+      case "path-target":
+        state.relationTarget=input.value;
+        $("#relationship-path").innerHTML=
+          renderPath();
+        break;
+
+      case "stat-rarity":
+        state.statRarity=input.value;
+        state.statDetail=null;
+        render();
+        break;
+
+      case "stat-dimension":
+        state.statDimension=input.value;
+        state.statDetail=null;
+        render();
+        break;
+
+      case "stat-chart":
+        state.statChart=input.value;
+        render();
+        break;
+
+      case "stat-metric":
+        state.statMetric=input.value;
+        render();
+        break;
+
+      case "cross-a":
+        state.statCrossA=input.value;
+        $("#cross-analysis").innerHTML=
+          renderCross();
+        $("#cross-detail").innerHTML="";
+        break;
+
+      case "cross-b":
+        state.statCrossB=input.value;
+        $("#cross-analysis").innerHTML=
+          renderCross();
+        $("#cross-detail").innerHTML="";
+        break;
     }
 
-    if (input.dataset.flexSingle) {
-
-      updateFlexibleSingle(input);
-      return;
-    }
-
-    if (input.name) {
-      updateDraftField(input);
-    }
-
-  }
-);
-
-
-  
-$("#gem-form").addEventListener(
-  "keydown",
-  event => {
-
-    if (event.key !== "Enter") return;
-
-    const tagInput = event.target.closest(
-      "[data-tag-input]"
-    );
-
-    if (tagInput) {
-
-      event.preventDefault();
-
-      addTag(tagInput.dataset.tagInput);
-
-      return;
-    }
-
-    const flexibleInput = event.target.closest(
-      "[data-flex-input]"
-    );
-
-    if (flexibleInput) {
-
-      event.preventDefault();
-
-      addFlexibleValue(
-        flexibleInput.dataset.flexInput
-      );
-
-    }
-
-  }
-);
-
-  // Central changes
-
-  main.addEventListener("change",event => {
-
-    const input = event.target;
-
-    if (input.id === "library-rarity") {
-
-      state.libraryRarity = input.value;
-
-      renderLibraryResults();
-    }
-
-    else if (input.id === "library-sort") {
-
-      state.librarySort = input.value;
-
-      renderLibraryResults();
-    }
-
-    else if (input.id === "compare-a") {
-
-      state.compareA = input.value;
-
-      render();
-    }
-
-    else if (input.id === "compare-b") {
-
-      state.compareB = input.value;
-
-      render();
-    }
-
-    else if (input.dataset.multiId) {
-
-      const id = input.dataset.multiId;
+    if (input.dataset.multiId) {
+      const id=input.dataset.multiId;
 
       if (input.checked) {
-
         if (!state.multiIds.includes(id)) {
           state.multiIds.push(id);
         }
-
-      }
-
-      else {
-
-        state.multiIds = state.multiIds.filter(
-          item => item !== id
+      } else {
+        state.multiIds=state.multiIds.filter(
+          value=>value!==id
         );
-
       }
 
-      // Update the table without losing checkboxes.
-
-      const panel = input.closest(".panel");
-
-      if (panel) {
-        panel.innerHTML = `
-          <div class="panel-title">
-            <h2>Multiple Gemstone Comparison</h2>
-          </div>
-          <p class="section-description">
-            Select several gemstones to compare their
-            properties side by side.
-          </p>
-          ${renderMultiComparison()}
-        `;
-      }
-
+      $("#multi-comparison").innerHTML=
+        renderMultiComparison();
     }
-
-    else if (input.id === "relation-gem") {
-
-      state.relationId = input.value;
-      render();
-    }
-
-    else if (input.id === "relation-sort") {
-
-      state.relationSort = input.value;
-      render();
-    }
-
-    else if (input.id === "path-target") {
-
-      updateRelationshipPath();
-    }
-
-    else if (input.id === "stat-rarity") {
-
-      state.statRarity = input.value;
-      state.statDetail = null;
-
-      render();
-    }
-
-    else if (input.id === "stat-dimension") {
-
-      state.statDimension = input.value;
-      state.statDetail = null;
-
-      render();
-    }
-
-    else if (input.id === "stat-chart") {
-
-      state.statChart = input.value;
-
-      render();
-    }
-
-    else if (input.id === "stat-metric") {
-
-      state.statMetric = input.value;
-
-      render();
-    }
-
-    else if (input.id === "cross-a" ||
-             input.id === "cross-b") {
-
-      const crossA = $("#cross-a");
-      const crossB = $("#cross-b");
-
-      const population = statisticsPopulation();
-
-      state.statSecondary = crossB.value;
-
-      $("#cross-analysis").innerHTML =
-        renderCrossAnalysis(population);
-
-      $("#cross-detail").innerHTML = "";
-
-    }
-
   });
 
+  main.addEventListener("input",event=>{
+    const input=event.target;
 
-  // Search inputs
-
-  main.addEventListener("input",event => {
-
-    if (event.target.id === "library-search") {
-
-      state.librarySearch = event.target.value;
-
+    if (input.id==="library-search") {
+      state.librarySearch=input.value;
       renderLibraryResults();
-
     }
 
-    else if (event.target.id === "stat-search") {
+    if (input.id==="family-filter") {
+      state.relationFilter=input.value;
+      const target=$("#family-tree");
+      if (target) target.innerHTML=renderFamilyTree();
+    }
 
-      state.statSearch = event.target.value;
-      state.statDetail = null;
+    if (input.id==="stat-search") {
+      state.statSearch=input.value;
+      state.statDetail=null;
 
-      // Debounce expensive statistical rendering.
-      clearTimeout(window.gemStatsTimer);
+      clearTimeout(statTimer);
 
-      window.gemStatsTimer = setTimeout(() => {
-
-        const focusField = $("#stat-search");
-
-        const caret =
-          focusField?.selectionStart ?? null;
-
+      statTimer=setTimeout(()=>{
+        const caret=input.selectionStart;
         render();
 
-        const restored = $("#stat-search");
-
+        const restored=$("#stat-search");
         restored?.focus();
 
-        if (
-          caret !== null &&
-          restored &&
-          typeof restored.setSelectionRange === "function"
-        ) {
-          restored.setSelectionRange(caret,caret);
-        }
-
-      },250);
-
+        try {
+          restored?.setSelectionRange(caret,caret);
+        } catch {}
+      },300);
     }
-
   });
 
-
-  // Import file
-
   $("#import-file").addEventListener(
-    "change",
-    async event => {
-
-      const file = event.target.files?.[0];
-
+    "change",async event=>{
+      const file=event.target.files?.[0];
       await importLibrary(file);
-
-      event.target.value = "";
-
+      event.target.value="";
     }
   );
 
-
-  // Confirmation
-
   $("#confirm-cancel").addEventListener(
-    "click",
-    closeConfirmation
+    "click",closeConfirmation
   );
 
   $("#confirm-accept").addEventListener(
-    "click",
-    acceptConfirmation
+    "click",acceptConfirmation
   );
 
+  document.addEventListener("keydown",event=>{
+    if (event.key!=="Escape") return;
 
-  // Escape key
-
-  document.addEventListener("keydown",event => {
-
-    if (event.key !== "Escape") return;
-
-    if (
-      !$("#confirm-overlay").classList.contains("hidden")
-    ) {
+    if (!$("#confirm-overlay").classList.contains(
+      "hidden"
+    )) {
       closeConfirmation();
       return;
     }
 
     if (state.editorOpen) {
-      discardAndCloseEditor();
+      requestCloseEditor();
     }
-
   });
-
 }
 
-
-/* =========================================
-   APPLICATION STARTUP
-========================================= */
+/* ==========================================
+   START
+========================================== */
 
 function initializeApp() {
-
-  loadLibrary();
-
-  refreshSelections();
-
-  initializeEvents();
-
-  render();
-
-  if (state.page === "library") {
-    renderLibraryResults();
+  if (!CFG) {
+    console.error("data.js failed to load.");
+    return;
   }
 
-  console.info(
-    "Gem Library V2 initialized.",
-    state.gems.length,
-    "gemstones loaded."
-  );
+  loadLibrary();
+  refreshSelections();
+  initializeEvents();
+  render();
 
+  console.info(
+    "Gem Library V3 ready.",
+    state.gems.length,
+    "records loaded."
+  );
 }
 
-document.addEventListener(
-  "DOMContentLoaded",
-  initializeApp
-);
+if (document.readyState==="loading") {
+  document.addEventListener(
+    "DOMContentLoaded",initializeApp
+  );
+} else {
+  initializeApp();
+}
